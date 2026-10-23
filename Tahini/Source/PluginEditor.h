@@ -31,5 +31,6 @@ private:
     juce::ComboBox* timeBox;
     skazi::ParamToggle *freeze, *dry;
     skazi::Knob *fb, *locut, *hicut, *wow, *drive, *size, *decay, *predelay, *damp, *width, *duck, *duckrel, *dmix, *rmix, *gain;
+    skazi::Knob *pitch, *reverse, *tstop, *age;
     skazi::Meter *outMeter, *duckMeter;
 };

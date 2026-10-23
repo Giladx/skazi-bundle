@@ -116,6 +116,43 @@ int main()
         expect (std::abs (L[0]) < 1.0e-4f, "DRY off removes the direct sound");
     }
 
+    // TAPE FX ---------------------------------------------------------------
+    auto tapeBase = base;
+    tapeBase.mode = Stereo; tapeBase.reverbMix = 0; tapeBase.duck = 0; tapeBase.dry = false; tapeBase.wow = 0;
+    tapeBase.delayMix = 1.0f; tapeBase.feedback = 0.7f; tapeBase.loCut = 20; tapeBase.hiCut = 20000;
+    const auto burst = [] (int i) { return i < 4800 ? 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 440.0 * i / sr) : 0.0f; };
+    auto freqAt = [] (const std::vector<float>& v, int from, int to)
+    {
+        int crossings = 0;
+        for (int i = from + 1; i < to; ++i) if (v[(size_t) i - 1] < 0.0f && v[(size_t) i] >= 0.0f) ++crossings;
+        return crossings * sr / (to - from);
+    };
+    {
+        auto s = tapeBase; s.pitch = 12.0f;
+        const auto [L, R] = run (s, T * 3, burst);
+        const double f1 = freqAt (L, T + 800, T + 4000), f2 = freqAt (L, 2 * T + 800, 2 * T + 4000);
+        expect (std::abs (f1 - 440.0) < 25.0 && std::abs (f2 - 880.0) < 45.0, "PITCH +12: each echo an octave higher",
+                juce::String (f1, 0) + " Hz -> " + juce::String (f2, 0) + " Hz");
+    }
+    {
+        // a hit that starts loud and fades: played backwards the echo swells instead
+        const auto hit = [] (int i) { return i < 9000 ? 0.6f * (float) std::sin (i * 0.06) * (float) std::exp (-i / 1500.0) : 0.0f; };
+        auto s = tapeBase; s.feedback = 0.0f;
+        const auto [Ln, Rn] = run (s, T * 2, hit);
+        s.reverse = 1.0f;
+        const auto [Lr, Rr] = run (s, T * 2, hit);
+        const double nEarly = rms (Ln, T, T + 3000), nLate = rms (Ln, T + 6000, T + 9000);
+        const double rEarly = rms (Lr, T, T + 3000), rLate = rms (Lr, T + 6000, T + 9000);
+        expect (nEarly > nLate * 3 && rLate > rEarly, "REVERSE plays the echo backwards",
+                "normal " + juce::String (nEarly / std::max (1e-9, nLate), 1) + "x early, reversed " + juce::String (rLate / std::max (1e-9, rEarly), 1) + "x late");
+    }
+    {
+        auto s = tapeBase; s.tapeStop = 1.0f; s.age = 1.0f; s.wow = 1.0f; s.reverse = 0.5f; s.pitch = -7.0f; s.feedback = 0.9f; s.mode = Tape;
+        juce::Random rnd (8);
+        const auto [L, R] = run (s, (int) (sr * 15), [&rnd] (int i) { return i % 48000 < 4000 ? (rnd.nextFloat() - 0.5f) * 0.8f : 0.0f; });
+        expect (clean (L) && clean (R) && rms (L, 0, (int) L.size()) > 0.005, "all tape FX maxed at 90% feedback stays clean for 15 s");
+    }
+
     // presets with a drum-ish input
     const auto& list = presets();
     std::set<juce::String> names;

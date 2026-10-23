@@ -272,7 +272,7 @@ void GlitchMagmaProcessor::randomize()
 {
     juce::Random r (juce::Time::currentTimeMillis());
     const int bank = r.nextInt (presets::numBanks);
-    presets::generate (bank, r, apvts);
+    presets::randomizeAll (bank, r, apvts);
     randomPreset = true;
     randomName = "Random " + presets::bankNames()[bank] + " #" + juce::String (r.nextInt (10000)).paddedLeft ('0', 4);
     ++presetVersion;

@@ -104,6 +104,9 @@ void TahiniDisplay::paint (Graphics& g)
     const String dot = String::fromUTF8 ("  \xc2\xb7  ");
     String info = "DELAY " + skazi::noteLengthNames()[s.time] + " " + modes[s.mode] + dot + "FB " + String (roundToInt (s.feedback * 100)) + "%"
                 + dot + "REVERB " + (s.freeze ? String ("FROZEN") : String (s.decay, 1) + " s") + dot + "DUCK " + String (roundToInt (s.duck * 100)) + "%";
+    if (std::abs (s.pitch) >= 0.5f) info << dot << "PITCH " << (s.pitch > 0 ? "+" : "") << roundToInt (s.pitch) << " st";
+    if (s.reverse > 0.01f) info << dot << "REVERSE";
+    if (s.tapeStop > 0.01f) info << dot << "TAPE STOPS";
     g.setFont (skin::font (10.5f));
     const float tw = GlyphArrangement::getStringWidth (g.getCurrentFont(), info) + 14.0f;
     g.setColour (Colours::black.withAlpha (0.65f));
@@ -128,10 +131,21 @@ TahiniEditor::TahiniEditor (TahiniProcessor& p)
     dry->setTooltip ("Turn off to use TAHINI on a send (wet only)");
 
     fb = &addKnob ("fb", "FEEDBACK", red, "%", 66);
-    locut = &addKnob ("locut", "LOW CUT", red, "Hz", 32);
-    hicut = &addKnob ("hicut", "HIGH CUT", red, "Hz", 32);
-    wow = &addKnob ("wow", "WOW", red, "%", 32);
-    drive = &addKnob ("ddrive", "DRIVE", red, "%", 32);
+    locut = &addKnob ("locut", "LOW CUT", red, "Hz", 34);
+    hicut = &addKnob ("hicut", "HIGH CUT", red, "Hz", 34);
+
+    // tape FX strip
+    const auto tapeCol = Colour (0xffffb000);
+    wow = &addKnob ("wow", "WOW", tapeCol, "%", 40);
+    age = &addKnob ("age", "AGE", tapeCol, "%", 40);
+    drive = &addKnob ("ddrive", "DRIVE", tapeCol, "%", 40);
+    pitch = &addKnob ("pitch", "PITCH", Colour (0xffff2d7a), "st", 40);
+    reverse = &addKnob ("reverse", "REVERSE", Colour (0xffc084fc), "%", 40);
+    tstop = &addKnob ("tstop", "TAPE STOP", Colour (0xff38bdf8), "%", 40);
+    pitch->slider.setTooltip ("Every echo is shifted again: + spirals up, - spirals down");
+    reverse->slider.setTooltip ("Blend in echoes played backwards");
+    tstop->slider.setTooltip ("How often the tape drags to a halt and spins back up");
+    age->slider.setTooltip ("Old tape: hiss, dropouts, extra wobble and a darker sound");
     size = &addKnob ("size", "SIZE", green, "%", 66);
     decay = &addKnob ("decay", "DECAY", green, "s", 32);
     predelay = &addKnob ("predelay", "PRE-DELAY", green, "ms", 32);
@@ -146,23 +160,30 @@ TahiniEditor::TahiniEditor (TahiniProcessor& p)
     duckMeter = &addMeter (p.engine.uiDuck, true);
     duck->slider.setTooltip ("Pushes the echoes and reverb down while you play, so they swell in the gaps");
 
-    setSize (1000, 520);
+    setSize (1000, 624);
 }
 
 void TahiniEditor::layout()
 {
     display.setBounds (20, 68, 960, 196);
 
-    const int y = 274, h = 196;
+    // TAPE FX strip across the whole width
+    panel ({ 20, 272, 960, 96 }, "TAPE FX");
+    int tx = 130;
+    for (auto* k : { wow, age, drive, pitch, reverse, tstop })
+    {
+        put (*k, tx, 280, 40, 80);
+        tx += 140;
+    }
+
+    const int y = 378, h = 196;
     panel ({ 20, y, 336, h }, "DELAY");
     modeRow->setBounds (84, y + 6, 264, 20);
     label ({ 32, y + 40, 60, 12 }, "TIME");
     timeBox->setBounds (32, y + 54, 84, 24);
     put (*fb, 122, y + 40, 66, 90);
-    put (*locut, 222, y + 34, 32, 60);
-    put (*hicut, 286, y + 34, 32, 60);
-    put (*wow, 222, y + 112, 32, 60);
-    put (*drive, 286, y + 112, 32, 60);
+    put (*locut, 232, y + 34, 34, 80);
+    put (*hicut, 232, y + 112, 34, 80);
 
     panel ({ 364, y, 300, h }, "REVERB");
     freeze->setBounds (432, y + 6, 66, 20);

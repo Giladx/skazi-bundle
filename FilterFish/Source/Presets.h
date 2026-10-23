@@ -284,6 +284,85 @@ inline void generate (int bank, juce::Random& r, juce::AudioProcessorValueTreeSt
         reverb (0.3f, 0.7f, 0.1f, 0.25f);
 }
 
+// RANDOM button: a random bank for the filter + LFO, then every effect rolled on its own:
+// each one is switched on or off at random and gets random settings (at least two end up on).
+inline void randomizeAll (int bank, juce::Random& r, juce::AudioProcessorValueTreeState& state)
+{
+    generate (bank, r, state);
+
+    auto set = [&] (const char* id, float v)
+    {
+        if (auto* p = state.getParameter (id))
+            p->setValueNotifyingHost (p->convertTo0to1 (v));
+    };
+    auto rnd    = [&] (float lo, float hi) { return lo + (hi - lo) * r.nextFloat(); };
+    auto logRnd = [&] (float lo, float hi) { return lo * std::pow (hi / lo, r.nextFloat()); };
+    auto pick   = [&] (std::initializer_list<int> l) { return (float) *(l.begin() + r.nextInt ((int) l.size())); };
+
+    constexpr int numFx = 7;
+    bool on[numFx];
+    int count = 0;
+    for (auto& o : on) { o = r.nextFloat() < 0.45f; count += o ? 1 : 0; }
+    while (count < 2) { auto& o = on[r.nextInt (numFx)]; if (! o) { o = true; ++count; } }
+
+    set (ids::distOn, on[0] ? 1.0f : 0.0f);
+    if (on[0])
+    {
+        set (ids::distType, pick ({ 0, 1, 2, 3, 4, 5 }));
+        set (ids::distDrive, rnd (0.1f, 0.75f));
+        set (ids::distMix, rnd (0.3f, 1.0f));
+    }
+    set (ids::glitchOn, on[1] ? 1.0f : 0.0f);
+    if (on[1])
+    {
+        set (ids::glitchMode, pick ({ 0, 1, 2, 3 }));
+        set (ids::glitchDiv, pick ({ 0, 1, 2, 3, 4, 5, 7 }));
+        set (ids::glitchRepeat, pick ({ 0, 1, 2, 3, 4 }));
+        set (ids::glitchProb, rnd (0.2f, 0.9f));
+        set (ids::glitchMix, rnd (0.7f, 1.0f));
+    }
+    set (ids::chorusOn, on[2] ? 1.0f : 0.0f);
+    if (on[2])
+    {
+        set (ids::chorusRate, logRnd (0.1f, 2.0f));
+        set (ids::chorusDepth, rnd (0.2f, 0.8f));
+        set (ids::chorusMix, rnd (0.2f, 0.55f));
+    }
+    set (ids::flangerOn, on[3] ? 1.0f : 0.0f);
+    if (on[3])
+    {
+        set (ids::flangerRate, logRnd (0.05f, 1.5f));
+        set (ids::flangerDepth, rnd (0.3f, 0.9f));
+        set (ids::flangerFeedback, (r.nextBool() ? 1.0f : -1.0f) * rnd (0.3f, 0.85f));
+        set (ids::flangerMix, rnd (0.3f, 0.6f));
+    }
+    set (ids::delayOn, on[4] ? 1.0f : 0.0f);
+    if (on[4])
+    {
+        set (ids::delaySync, 1.0f);
+        set (ids::delayDiv, pick ({ 2, 3, 4, 5, 6, 7, 8 }));
+        set (ids::delayFeedback, rnd (0.2f, 0.75f));
+        set (ids::delayPingPong, r.nextBool() ? 1.0f : 0.0f);
+        set (ids::delayMix, rnd (0.15f, 0.45f));
+    }
+    set (ids::reverbOn, on[5] ? 1.0f : 0.0f);
+    if (on[5])
+    {
+        set (ids::reverbSize, rnd (0.3f, 0.95f));
+        set (ids::reverbDamp, rnd (0.2f, 0.8f));
+        set (ids::reverbMix, rnd (0.1f, 0.45f));
+    }
+    set (ids::inflateOn, on[6] ? 1.0f : 0.0f);
+    if (on[6])
+    {
+        set (ids::inflateAmount, rnd (0.2f, 1.0f));
+        set (ids::inflateCurve, rnd (-50.0f, 50.0f));
+    }
+    set (ids::width, rnd (0.8f, 1.6f));
+    // drive and inflate add level: pull the output down so RANDOM never jumps out loud
+    set (ids::outGain, (on[0] || on[6]) ? rnd (-6.0f, -3.0f) : rnd (-2.0f, 0.0f));
+}
+
 inline void applyFactory (int program, juce::AudioProcessorValueTreeState& state)
 {
     if (program <= 0)

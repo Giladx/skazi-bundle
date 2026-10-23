@@ -15,7 +15,11 @@ const std::vector<skazi::ParamDef>& paramDefs()
 {
     using P = skazi::ParamDef;
     static const std::vector<P> defs = {
-        { "dmode", "Delay Mode", P::Choice, 0, 2, 0, "", 1, 1, { "PING-PONG", "STEREO", "TAPE" } },
+        { "dmode", "Delay Mode", P::Choice, 0, 2, 2, "", 1, 1, { "PING-PONG", "STEREO", "TAPE" } },
+        { "pitch", "Echo Pitch", P::Float, -12, 12, 0, "st", 1 },
+        { "reverse", "Reverse Echoes", P::Float, 0, 100, 0, "%", 0.1f },
+        { "tstop", "Tape Stops", P::Float, 0, 100, 0, "%", 0.1f },
+        { "age", "Tape Age", P::Float, 0, 100, 0, "%", 0.1f },
         { "dtime", "Delay Time", P::Choice, 0, 15, 12, "", 1, 1, skazi::noteLengthNames() },
         { "fb", "Feedback", P::Float, 0, 95, 55, "%", 0.1f },
         { "locut", "Low Cut", P::Float, 20, 2000, 250, "Hz", 1, 0.4f },
@@ -48,13 +52,16 @@ Settings Settings::fromValues (const std::function<float (const char*)>& v)
     s.duck = v ("duck") * 0.01f; s.duckRelMs = v ("duckrel");
     s.delayMix = v ("dmix") * 0.01f; s.reverbMix = v ("rmix") * 0.01f; s.dry = v ("dry") > 0.5f;
     s.gain = juce::Decibels::decibelsToGain (v ("gain"));
+    s.pitch = v ("pitch"); s.reverse = v ("reverse") * 0.01f; s.tapeStop = v ("tstop") * 0.01f; s.age = v ("age") * 0.01f;
     return s;
 }
 
 void Engine::prepare (double sampleRate, int)
 {
     sr = sampleRate;
-    for (auto& d : dl) d.init ((int) (sr * 4.2));
+    for (auto& d : dl) d.init ((int) (sr * 9.0)); // room for reverse heads (2x the echo) and tape stops
+    for (auto& sh : shift) { sh.window = juce::jmax (256, (int) (sr * 0.045)); sh.line.init (sh.window + 4); sh.phase = 0; }
+    revPhase = 0; stopEnv = 0; stopping = false; stopCount = 0; dropEnv = 1.0f;
     pre.init ((int) (sr * 0.3));
     for (int i = 0; i < 4; ++i)
     {
@@ -83,9 +90,14 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s, juce:
     if (delaySmooth <= 0.0) delaySmooth = target;
     const double smooth = s.mode == Tape ? 0.00005 : 0.0015;
     const bool tape = s.mode == Tape;
-    const double wowDepth = (tape ? juce::jmax (0.2f, s.wow) : s.wow) * 0.003 * sr;
+    const double wowDepth = ((tape ? juce::jmax (0.2f, s.wow) : s.wow) + s.age * 0.8f) * 0.003 * sr;
     const float aLo = (float) (1.0 - std::exp (-twoPi * s.loCut / sr));
-    const float aHi = (float) (1.0 - std::exp (-twoPi * (tape ? juce::jmin (s.hiCut, 5000.0f) : s.hiCut) / sr));
+    const float hiCut = (tape ? juce::jmin (s.hiCut, 5000.0f) : s.hiCut) * (1.0f - 0.6f * s.age); // old tape is darker
+    const float aHi = (float) (1.0 - std::exp (-twoPi * hiCut / sr));
+    const double pitchRatio = std::exp2 (s.pitch / 12.0);
+    const double beatSamples = 60.0 / ht.bpm * sr;
+    const float stopIn = (float) (1.0 - std::exp (-1.0 / (0.25 * sr))), stopOut = (float) (1.0 - std::exp (-1.0 / (0.15 * sr)));
+    const double maxRead = dl[0].buf.size() - 8.0;
     const float drv = 1.0f + s.drive * 3.0f + (tape ? 1.0f : 0.0f);
     const float fb = juce::jmin (0.95f, s.feedback);
 
@@ -129,17 +141,56 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s, juce:
         if (flutterPh > 1.0) flutterPh -= 1.0;
         const double mod = wowDepth * (std::sin (twoPi * wowPh) + 0.2 * std::sin (twoPi * flutterPh));
         const double dBase = juce::jmax (2.0, delaySmooth);
-        const float eL = dl[0].read (juce::jmax (1.0, dBase + mod));
-        const float eR = dl[1].read (juce::jmax (1.0, dBase + (s.mode == Stereo ? -mod : mod)));
+
+        // TAPE STOP: now and then (once per beat it rolls the dice) the tape drags to a halt and spins back up
+        if (++stopCount >= beatSamples)
+        {
+            stopCount = 0;
+            if (! stopping && s.tapeStop > 0.0f && rng.nextFloat() < s.tapeStop * 0.3f)
+            {
+                stopping = true;
+                stopHold = sr * (0.3 + 0.3 * rng.nextFloat());
+            }
+        }
+        if (stopping) { stopEnv += (1.0f - stopEnv) * stopIn; if (--stopHold <= 0) stopping = false; }
+        else          stopEnv += (0.0f - stopEnv) * stopOut;
+        const double lag = stopEnv * 0.25 * sr;
+
+        float eL = dl[0].read (juce::jlimit (1.0, maxRead, dBase + mod + lag));
+        float eR = dl[1].read (juce::jlimit (1.0, maxRead, dBase + (s.mode == Stereo ? -mod : mod) + lag));
+        const float fbL = eL, fbR = eR;
+
+        // REVERSE: a second head runs backwards through the last echo-length of tape
+        if (s.reverse > 0.0f)
+        {
+            revPhase += 1.0;
+            if (revPhase >= dBase) revPhase = 0.0;
+            const double rd = juce::jlimit (1.0, maxRead, 1.0 + 2.0 * revPhase + lag);
+            const float w = (float) std::sin (juce::MathConstants<double>::pi * revPhase / dBase);
+            eL = eL * (1.0f - s.reverse) + dl[0].read (rd) * w * s.reverse;
+            eR = eR * (1.0f - s.reverse) + dl[1].read (rd) * w * s.reverse;
+        }
+
+        // AGE: hiss and the odd dropout
+        if (s.age > 0.0f)
+        {
+            if (rng.nextFloat() < s.age * 0.00004f) dropEnv = 0.15f + 0.3f * rng.nextFloat();
+            dropEnv += (1.0f - dropEnv) * 0.0004f;
+            const float dip = 1.0f - s.age * (1.0f - dropEnv);
+            eL = eL * dip + (rng.nextFloat() - 0.5f) * 0.006f * s.age;
+            eR = eR * dip + (rng.nextFloat() - 0.5f) * 0.006f * s.age;
+        }
+
+        // PITCH: every trip round the tape is shifted again, so the echoes spiral up or down
         if (s.mode == PingPong)
         {
-            dl[0].write (0.5f * (dryL + dryR) + feedbackPath (eR, 1) * fb);
-            dl[1].write (feedbackPath (eL, 0) * fb);
+            dl[0].write (0.5f * (dryL + dryR) + shift[1].process (feedbackPath (fbR, 1), pitchRatio) * fb);
+            dl[1].write (shift[0].process (feedbackPath (fbL, 0), pitchRatio) * fb);
         }
         else
         {
-            dl[0].write (dryL + feedbackPath (eL, 0) * fb);
-            dl[1].write (dryR + feedbackPath (eR, 1) * fb);
+            dl[0].write (dryL + shift[0].process (feedbackPath (fbL, 0), pitchRatio) * fb);
+            dl[1].write (dryR + shift[1].process (feedbackPath (fbR, 1), pitchRatio) * fb);
         }
 
         // reverb: pre-delay -> 4 diffusers -> 8-line FDN with Householder mixing

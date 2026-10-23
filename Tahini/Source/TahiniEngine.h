@@ -18,6 +18,7 @@ struct Settings
     int mode = PingPong, time = 12; float feedback = 0.55f, loCut = 250, hiCut = 6500, wow = 0.25f, drive = 0.1f;
     bool freeze = false; float size = 0.65f, decay = 4.2f, predelayMs = 30, damp = 0.5f, width = 0.9f;
     float duck = 0.6f, duckRelMs = 200, delayMix = 0.4f, reverbMix = 0.3f; bool dry = true; float gain = 1.0f;
+    float pitch = 0, reverse = 0, tapeStop = 0, age = 0; // tape FX
     static Settings fromValues (const std::function<float (const char*)>& v);
 };
 
@@ -61,9 +62,32 @@ private:
         }
     };
 
+    // Pitch shifter for the feedback path: two read heads sweeping a short buffer, crossfaded
+    struct Shifter
+    {
+        Line line; double phase = 0; int window = 2048;
+        float process (float x, double ratio)
+        {
+            line.write (x);
+            if (std::abs (ratio - 1.0) < 1.0e-4) return x;
+            phase += (1.0 - ratio) / window;
+            phase -= std::floor (phase);
+            const double p2 = phase + 0.5 - std::floor (phase + 0.5);
+            const float w1 = (float) std::sin (juce::MathConstants<double>::pi * phase);
+            const float w2 = (float) std::sin (juce::MathConstants<double>::pi * p2);
+            return line.read (1.0 + phase * window) * w1 * w1 + line.read (1.0 + p2 * window) * w2 * w2;
+        }
+    };
+
     double sr = 44100.0;
     // delay
     Line dl[2];
+    Shifter shift[2];
+    double revPhase = 0;                      // reverse heads: position inside the current echo
+    float stopEnv = 0; bool stopping = false; // tape stop
+    double stopCount = 0, stopHold = 0;
+    float ageLp[2] {}, dropEnv = 1.0f;
+    juce::Random rng;
     double delaySmooth = 0, wowPh = 0, flutterPh = 0;
     float hp[2] {}, lpA[2] {}, lpB[2] {};
     // reverb

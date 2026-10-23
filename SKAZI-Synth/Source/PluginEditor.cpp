@@ -1037,7 +1037,7 @@ public:
     {
         g.setColour (Acid::dim);
         g.setFont (Acid::font (11.f, false));
-        g.drawText ("Plays with your DAW (or RUN). While it runs, MIDI keys transpose the pattern (C3 = 0).",
+        g.drawText ("Plays only while MIDI notes come in (DAW clip or keyboard), in time with the song or RUN. C3 = no transpose.",
                     200, 10, getWidth() - 220, 22, juce::Justification::centredRight);
     }
 
@@ -1063,18 +1063,23 @@ public:
         }
         prev.onClick = [this] { step (-1); };
         next.onClick = [this] { step (1); };
+        rnd.setColour (juce::TextButton::buttonColourId, juce::Colour (0xffc0281e));
+        rnd.setTooltip ("Random sound with random effects");
+        rnd.onClick = [this] { proc.randomizeSound(); repaint(); };
+        addAndMakeVisible (rnd);
         startTimerHz (10);
     }
 
     void resized() override
     {
         prev.setBounds (0, 0, 36, getHeight());
+        rnd.setBounds (40, 0, 48, getHeight());
         next.setBounds (getWidth() - 36, 0, 36, getHeight());
     }
 
     void paint (juce::Graphics& g) override
     {
-        auto r = getLocalBounds().reduced (40, 0).toFloat();
+        auto r = getLocalBounds().withTrimmedLeft (92).withTrimmedRight (40).toFloat();
         g.setColour (Acid::screen);
         g.fillRoundedRectangle (r, 5.f);
         g.setColour (Acid::accentFor (Acid::violet).withAlpha (0.7f));
@@ -1122,7 +1127,7 @@ private:
 
     AcidanceProcessor& proc;
     std::function<void()> onOpen;
-    juce::TextButton prev { "<" }, next { ">" };
+    juce::TextButton prev { "<" }, next { ">" }, rnd { "RND" };
     int lastChange = -1;
 };
 

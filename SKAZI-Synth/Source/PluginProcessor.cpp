@@ -283,6 +283,14 @@ void AcidanceProcessor::setCurrentProgram (int index)
     updateHostDisplay (ChangeDetails().withProgramChanged (true));
 }
 
+void AcidanceProcessor::randomizeSound()
+{
+    const auto style = Presets::randomSound (*this);
+    currentPresetName = "Random " + style + " #" + juce::String (juce::Random::getSystemRandom().nextInt ({ 1000, 10000 }));
+    currentPresetFolder = "Random";
+    ++programChanges;
+}
+
 bool AcidanceProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     return layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
@@ -368,7 +376,12 @@ void AcidanceProcessor::noteOff (int note)
 
     int idx = -1;
     for (int i = 0; i < numHeld; ++i) if (heldNotes[i] == note) idx = i;
-    if (idx < 0) return;
+    if (idx < 0)
+    {
+        // a note that never made the held list (more than 16 keys down): still let go of it
+        if (numHeld == 0 && voices[0].getNote() == note && ! voices[0].isReleased()) voices[0].release();
+        return;
+    }
     const bool wasTop = idx == numHeld - 1;
     for (int i = idx; i < numHeld - 1; ++i) heldNotes[i] = heldNotes[i + 1];
     --numHeld;
@@ -398,6 +411,8 @@ void AcidanceProcessor::panic()
     numHeld = 0;
     lastSlide = false;
     seqKeyOffset = 0;
+    seqKeys.fill (false);
+    seqKeyCount = 0;
     resetControllers();
     dist.reset();
     modFx.reset();
@@ -407,10 +422,24 @@ void AcidanceProcessor::panic()
     eq.reset();
 }
 
+bool AcidanceProcessor::seqGateOpen() const
+{
+    // The pattern never plays by itself: only while MIDI notes are held (a DAW clip or a keyboard).
+    // RUN just provides the clock when no song is playing.
+    return seqKeyCount > 0;
+}
+
 void AcidanceProcessor::seqStepStart (int step)
 {
     currentStep.store (step);
     if (pSeqOn->load() < 0.5f) return;
+    if (! seqGateOpen())
+    {
+        auto& sv = voices[kNumVoices];
+        if (! sv.isReleased()) sv.release();
+        lastSlide = false;
+        return;
+    }
 
     auto& sv = voices[kNumVoices];
     const int pat = juce::jlimit (0, kNumPatterns - 1, (int) pSeqPattern->load() - 1);
@@ -437,7 +466,7 @@ void AcidanceProcessor::seqStepEnd()
     if (! lastSlide && ! sv.isReleased()) sv.release();
 }
 
-void AcidanceProcessor::handleMidi (const juce::MidiMessage& m, bool seqRunning)
+void AcidanceProcessor::handleMidi (const juce::MidiMessage& m, bool seqArmed)
 {
     if (m.isPitchWheel())
     {
@@ -459,10 +488,31 @@ void AcidanceProcessor::handleMidi (const juce::MidiMessage& m, bool seqRunning)
     if (m.isChannelPressure()) { gm.aftertouch = m.getChannelPressureValue() / 127.f; return; }
     if (m.isAftertouch()) { gm.aftertouch = m.getAfterTouchValue() / 127.f; return; }
 
-    if (seqRunning)
+    if (seqArmed)
     {
-        // While the sequencer runs, keys transpose the pattern (C3 = no transpose)
-        if (m.isNoteOn()) seqKeyOffset = m.getNoteNumber() - 60;
+        // While the sequencer is on, holding keys plays the pattern and transposes it (C3 = no transpose);
+        // letting go of the last key stops it
+        if (m.isNoteOn())
+        {
+            seqKeyOffset = m.getNoteNumber() - 60;
+            if (! seqKeys[(size_t) m.getNoteNumber()]) { seqKeys[(size_t) m.getNoteNumber()] = true; ++seqKeyCount; }
+        }
+        else if (m.isNoteOff() && seqKeys[(size_t) m.getNoteNumber()])
+        {
+            seqKeys[(size_t) m.getNoteNumber()] = false;
+            if (--seqKeyCount == 0 && ! seqGateOpen())
+            {
+                auto& sv = voices[kNumVoices];
+                if (! sv.isReleased()) sv.release();
+                lastSlide = false;
+            }
+        }
+        else if (m.isAllNotesOff() || m.isAllSoundOff())
+        {
+            seqKeys.fill (false);
+            seqKeyCount = 0;
+            allNotesOff();
+        }
         return;
     }
 
@@ -512,7 +562,8 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         currentStep.store (-1);
     }
     wasRunning = playing;
-    const bool seqRunning = playing && seqOn;
+    const bool seqRunning = playing && seqOn; // armed: keys go to the pattern, which plays only while one is held
+    if (! seqRunning && seqKeyCount > 0) { seqKeys.fill (false); seqKeyCount = 0; }
 
     const double inc16 = bpm / 60.0 * 4.0 / sr;
     const double shuffleOff = pShuffle->load() * 0.33;

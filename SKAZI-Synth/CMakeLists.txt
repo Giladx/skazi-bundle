@@ -66,4 +66,11 @@ if(SKAZI_BUILD_TESTS)
     target_compile_definitions(RenderTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="SKAZI")
     target_link_libraries(RenderTest PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
         PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+
+    # the sequencer must never play by itself in a DAW
+    juce_add_console_app(SeqGateTest PRODUCT_NAME "SeqGateTest")
+    target_sources(SeqGateTest PRIVATE Tools/SeqGateTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/Presets.cpp)
+    target_compile_definitions(SeqGateTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="SKAZI")
+    target_link_libraries(SeqGateTest PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
+        PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 endif()

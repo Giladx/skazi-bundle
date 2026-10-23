@@ -40,6 +40,17 @@ namespace
             { "ROOMS", [] (skazi::PresetGen& g) {
                   g.range ("dmix", 0, 10); g.range ("size", 10, 40); g.range ("decay", 0.4f, 1.5f); g.range ("predelay", 0, 20);
                   g.range ("damp", 30, 70); g.range ("rmix", 15, 35); g.range ("duck", 0, 30); g.range ("width", 60, 100); } },
+            { "CRAZY TAPE", [] (skazi::PresetGen& g) {
+                  g.set ("dmode", Tape); g.set ("dtime", (float) g.pick ({ 3, 12, 8, 2 })); g.range ("fb", 45, 75);
+                  g.range ("wow", 30, 80); g.range ("age", 30, 90); g.range ("ddrive", 20, 60); g.range ("hicut", 3000, 7000);
+                  g.set ("reverse", g.chance (0.6f) ? g.rr (30, 100) : 0.0f); g.range ("tstop", 20, 80);
+                  g.set ("pitch", g.chance (0.4f) ? (float) g.pick ({ -12, -7, -5, 5, 7, 12 }) : 0.0f);
+                  g.range ("size", 40, 80); g.range ("decay", 2, 6); g.range ("dmix", 35, 55); g.range ("rmix", 10, 30); g.range ("duck", 30, 70); } },
+            { "PITCH SPIRAL", [] (skazi::PresetGen& g) {
+                  g.set ("dmode", (float) g.pick ({ Tape, PingPong })); g.set ("dtime", (float) g.pick ({ 3, 12, 2, 13 })); g.range ("fb", 50, 80);
+                  g.set ("pitch", (float) g.pick ({ -12, -7, -5, -3, 3, 5, 7, 12 })); g.range ("wow", 10, 40); g.range ("age", 0, 40);
+                  g.set ("reverse", g.chance (0.3f) ? g.rr (20, 60) : 0.0f);
+                  g.range ("size", 60, 95); g.range ("decay", 3, 10); g.range ("dmix", 30, 50); g.range ("rmix", 20, 45); g.range ("duck", 30, 70); } },
             { "AMBIENT WASH", [] (skazi::PresetGen& g) {
                   g.set ("dmode", Tape); g.set ("dtime", (float) g.pick ({ 1, 10, 2 })); g.range ("fb", 50, 70); g.range ("wow", 20, 50);
                   g.range ("hicut", 3000, 6000); g.range ("size", 90, 100); g.range ("decay", 10, 20); g.range ("damp", 40, 70);
@@ -64,6 +75,10 @@ namespace
         factory ("Clean Ping-Pong", { { "rmix", 0 }, { "fb", 45 }, { "duck", 0 } });
         factory ("Big Hall", { { "dmix", 0 }, { "size", 90 }, { "decay", 7 }, { "rmix", 45 } });
         factory ("Send Only (no dry)", { { "dry", 0 }, { "dmix", 100 }, { "rmix", 100 }, { "duck", 0 } });
+        factory ("Broken Tape Machine", { { "dmode", Tape }, { "age", 80 }, { "tstop", 60 }, { "wow", 70 }, { "reverse", 40 }, { "fb", 65 } });
+        factory ("Rising Spiral", { { "pitch", 12 }, { "fb", 70 }, { "dtime", 12 }, { "rmix", 35 } });
+        factory ("Falling Spiral", { { "pitch", -12 }, { "fb", 70 }, { "dtime", 12 }, { "rmix", 35 } });
+        factory ("Backwards Echo", { { "reverse", 100 }, { "fb", 55 }, { "dtime", 2 } });
 
         int g = 0;
         for (auto& cat : categories())

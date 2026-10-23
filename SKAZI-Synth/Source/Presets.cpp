@@ -1327,6 +1327,25 @@ namespace Presets
         p.setParam ("volume", juce::jlimit (0.f, 2.f, 0.8f * gain));
     }
 
+    juce::String randomSound (AcidanceProcessor& p)
+    {
+        auto& sys = juce::Random::getSystemRandom();
+        const int c = sys.nextInt (numCats), l = sys.nextInt (cats[c].size);
+        p.resetAllParams();
+        for (int i = 0; i < kNumLfos; ++i)
+            for (int s = 0; s < kLfoSteps; ++s) p.lfoCustom[i][s] = (s % 4 == 0) ? 1.f : -0.5f;
+
+        Ctx ctx { &p, std::mt19937 ((uint32_t) sys.nextInt()), nullptr };
+        run (cats[c].gen, ctx, l);
+
+        // every effect gets rolled again, not just the sound: all off, then a random chain
+        for (auto* id : { "dist_on", "comp_on", "dly_on", "rev_on", "mfx_on" })
+            ctx.set (id, 0.f);
+        randomFx (ctx, ctx.chance (0.4f));
+        p.setParam ("volume", 0.6f); // unknown loudness, so start a little lower than the factory presets
+        return cats[c].name;
+    }
+
     juce::var toJson()
     {
         juce::Array<juce::var> list;
