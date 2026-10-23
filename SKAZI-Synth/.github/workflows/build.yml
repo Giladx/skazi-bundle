@@ -1,0 +1,70 @@
+# Builds SKAZI for Windows and macOS and produces both installers.
+# Run it from the Actions tab ("Run workflow") or by pushing to main.
+# Download the installers from the finished run's "Artifacts" section.
+name: Build installers
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  workflow_dispatch:
+
+env:
+  JUCE_TAG: 8.0.4
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get JUCE
+        run: git clone --depth 1 --branch ${{ env.JUCE_TAG }} https://github.com/juce-framework/JUCE.git C:/JUCE
+
+      - name: Build
+        run: |
+          cmake -S . -B C:/b -A x64 -DJUCE_DIR=C:/JUCE
+          cmake --build C:/b --config Release --parallel
+
+      - name: Stage files
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp -r C:/b/SKAZI_artefacts/Release/VST3/SKAZI.vst3 dist/
+          cp C:/b/SKAZI_artefacts/Release/Standalone/SKAZI.exe dist/
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Installer\SKAZI.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SKAZI-Windows-Installer
+          path: dist/SKAZI_Setup_*.exe
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get JUCE
+        run: git clone --depth 1 --branch ${{ env.JUCE_TAG }} https://github.com/juce-framework/JUCE.git "$HOME/JUCE"
+
+      - name: Build (universal arm64 + x86_64)
+        run: |
+          cmake -S . -B build -G Xcode -DJUCE_DIR="$HOME/JUCE"
+          cmake --build build --config Release --parallel 4
+
+      - name: Build installer
+        env:
+          APP_SIGN_ID: ${{ secrets.APP_SIGN_ID }}
+          PKG_SIGN_ID: ${{ secrets.PKG_SIGN_ID }}
+        run: |
+          VER=$(sed -n 's/^project(SKAZI VERSION \(.*\))/\1/p' CMakeLists.txt)
+          bash Installer/mac/build_pkg.sh build/SKAZI_artefacts/Release "$VER" dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SKAZI-Mac-Installer
+          path: dist/SKAZI_Setup_*_mac.pkg

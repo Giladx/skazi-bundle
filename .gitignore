@@ -1,0 +1,5 @@
+build/
+build-mac/
+dist/
+Installer/payload/
+*/Installer/payload/

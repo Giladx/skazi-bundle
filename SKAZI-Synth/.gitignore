@@ -1,0 +1,7 @@
+build/
+dist/
+JUCE/
+out/
+*.user
+.vs/
+.DS_Store

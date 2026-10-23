@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>SKAZI by Asher Swissa</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <domains enable_localSystem="true"/>
+
+    <choices-outline>
+        <line choice="vst3"/>
+        <line choice="au"/>
+        <line choice="app"/>
+    </choices-outline>
+
+    <choice id="vst3" title="VST3 plug-in" description="Installs SKAZI.vst3 to /Library/Audio/Plug-Ins/VST3">
+        <pkg-ref id="com.skazi.synth.vst3"/>
+    </choice>
+    <choice id="au" title="Audio Unit (Logic, GarageBand)" description="Installs SKAZI.component to /Library/Audio/Plug-Ins/Components">
+        <pkg-ref id="com.skazi.synth.au"/>
+    </choice>
+    <choice id="app" title="Standalone app" description="Installs SKAZI.app to /Applications">
+        <pkg-ref id="com.skazi.synth.app"/>
+    </choice>
+
+    <pkg-ref id="com.skazi.synth.vst3" version="@VERSION@">skazi_vst3.pkg</pkg-ref>
+    <pkg-ref id="com.skazi.synth.au" version="@VERSION@">skazi_au.pkg</pkg-ref>
+    <pkg-ref id="com.skazi.synth.app" version="@VERSION@">skazi_app.pkg</pkg-ref>
+</installer-gui-script>
