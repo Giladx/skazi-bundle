@@ -74,9 +74,21 @@ namespace Fx
         {
             const int size = (int) buf[0].size();
             const float inc = rate / sr;
+            // RING: DEPTH sets the carrier (30 Hz .. 3 kHz), FEEDBACK how far the LFO bends it
+            const float ringBase = 30.f * std::exp2 (depth * 6.6f);
             for (int i = 0; i < n; ++i)
             {
                 phase += inc; if (phase >= 1.f) phase -= 1.f;
+                if (type == 3)
+                {
+                    const float f = std::min (ringBase * std::exp2 (std::sin (6.2831853f * phase) * fb), sr * 0.45f);
+                    ringPhase += f / sr;
+                    if (ringPhase >= 1.f) ringPhase -= 1.f;
+                    const float carrier = std::sin (6.2831853f * ringPhase);
+                    for (float* io : { L + i, R + i })
+                        *io = *io * (1.f - mix) + *io * carrier * mix;
+                    continue;
+                }
                 float* io[2] = { L + i, R + i };
                 for (int c = 0; c < 2; ++c)
                 {
@@ -118,7 +130,7 @@ namespace Fx
         }
 
     private:
-        float sr = 44100.f, phase = 0.f;
+        float sr = 44100.f, phase = 0.f, ringPhase = 0.f;
         std::vector<float> buf[2];
         int pos = 0;
         float ap[2][6] {};

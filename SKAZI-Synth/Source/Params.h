@@ -19,7 +19,7 @@ namespace Lists
     inline const juce::StringArray lfoTrig    { "Global", "Retrigger" };
     inline const juce::StringArray voiceModes { "Poly", "Mono", "Legato" };
     inline const juce::StringArray distTypes  { "Tube", "Soft Clip", "Hard Clip", "Bitcrush" };
-    inline const juce::StringArray modFxTypes { "Chorus", "Phaser", "Flanger" };
+    inline const juce::StringArray modFxTypes { "Chorus", "Phaser", "Flanger", "Ring Mod" };
     inline const juce::StringArray compModes  { "Normal", "OTT" };
 
     inline const juce::StringArray modSources { "None", "LFO 1", "LFO 2", "LFO 3", "LFO 4", "LFO 5", "LFO 6", "LFO 7", "LFO 8",

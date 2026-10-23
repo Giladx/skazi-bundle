@@ -53,7 +53,7 @@ if (-not $InstallerOnly) {
         Write-Host "== Building $($p.Name)"
         $b = Join-Path $BuildRoot ("b-" + $p.Target)
         $juce = if ($p.Juce -eq "4") { $j4 } else { $j15 }
-        Run cmake @("-S", (Join-Path $root $p.Folder), "-B", $b, "-G", "Visual Studio 17 2022", "-A", "x64", "-D$($p.Flag)=$juce")
+        Run cmake @("-S", (Join-Path $root $p.Folder), "-B", $b, "-A", "x64", "-D$($p.Flag)=$juce")
         Run cmake @("--build", $b, "--config", "Release", "--target", "$($p.Target)_VST3", "$($p.Target)_Standalone", "--parallel")
         $art = Join-Path $b "$($p.Target)_artefacts\Release"
         Copy-Item -Recurse -Force (Join-Path $art "VST3\$($p.Name).vst3") "$stage\VST3\"
@@ -68,7 +68,7 @@ if ($PluginsOnly) { return }
 Write-Host "== Building the installer"
 $ib = Join-Path $BuildRoot "b-installer"
 $j4 = Get-Juce $Juce4 "8.0.4"
-Run cmake @("-S", (Join-Path $root "BundleInstaller"), "-B", $ib, "-G", "Visual Studio 17 2022", "-A", "x64", "-DFETCHCONTENT_SOURCE_DIR_JUCE=$j4")
+Run cmake @("-S", (Join-Path $root "BundleInstaller"), "-B", $ib, "-A", "x64", "-DFETCHCONTENT_SOURCE_DIR_JUCE=$j4")
 Run cmake @("--build", $ib, "--config", "Release", "--target", "SkaziBundleSetup", "--parallel")
 
 # The payload rides on the end of the exe: [setup.exe][payload.zip][zip size: int64][magic "SKZBNDL1"]

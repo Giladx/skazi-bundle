@@ -821,9 +821,9 @@ public:
         distType = dist->choice ("dist_type", { "TUBE", "SOFT", "HARD", "CRUSH" });
         distKnobs = { dist->knob ("dist_drive", "DRIVE"), dist->knob ("dist_mix", "MIX") };
 
-        mfx = add (new Panel ("CHORUS / PHASER / FLANGER", Acid::cyan, s));
+        mfx = add (new Panel ("CHORUS / PHASER / FLANGER / RING", Acid::cyan, s));
         mfxOn = mfx->toggle ("mfx_on", "ON");
-        mfxType = mfx->choice ("mfx_type", { "CHORUS", "PHASER", "FLANGER" });
+        mfxType = mfx->choice ("mfx_type", { "CHORUS", "PHASER", "FLANGER", "RING" });
         mfxKnobs = { mfx->knob ("mfx_rate", "RATE"), mfx->knob ("mfx_depth", "DEPTH"),
                      mfx->knob ("mfx_fb", "FEEDBACK"), mfx->knob ("mfx_mix", "MIX") };
 
@@ -1661,6 +1661,77 @@ private:
 };
 
 //==============================================================================
+// Hardware-style wheel for the left rail. PITCH springs back to the middle; both follow
+// incoming MIDI wheels too.
+class PerfWheel : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    PerfWheel (juce::String label, bool bipolar, std::function<float()> current, std::function<void (float)> moved)
+        : name (std::move (label)), centred (bipolar), read (std::move (current)), write (std::move (moved)) {}
+
+    void refresh()
+    {
+        if (dragging) return;
+        const float v = read();
+        if (std::abs (v - value) > 0.002f) { value = v; repaint(); }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat();
+        g.setColour (Acid::screenDim);
+        g.setFont (Acid::font (11.f));
+        g.drawText (name, b.removeFromTop (16.f), juce::Justification::centred);
+        g.setColour (juce::Colours::black);
+        g.fillRoundedRectangle (b, 5.f);
+        auto w = b.reduced (6.f, 4.f);
+        g.setColour (juce::Colour (0xff0a0a0c));
+        g.fillRoundedRectangle (w, 4.f);
+        juce::ColourGradient shine (juce::Colour (0x00ffffff), w.getX(), w.getY(), juce::Colour (0x00ffffff), w.getX(), w.getBottom(), false);
+        shine.addColour (0.5, juce::Colour (0x38ffffff));
+        g.setGradientFill (shine);
+        g.fillRoundedRectangle (w, 4.f);
+        const float roll = (centred ? value : value * 2.f - 1.f) * 0.5f;
+        for (int i = -10; i <= 10; ++i)
+        {
+            const float a = (i / 10.f + roll) * juce::MathConstants<float>::halfPi;
+            if (std::abs (a) >= juce::MathConstants<float>::halfPi) continue;
+            g.setColour (juce::Colours::white.withAlpha (0.12f * std::cos (a)));
+            g.drawHorizontalLine ((int) (w.getCentreY() + std::sin (a) * w.getHeight() * 0.5f), w.getX() + 3, w.getRight() - 3);
+        }
+        const float pos = centred ? 0.5f - value * 0.5f : 1.f - value;
+        g.setColour (Acid::accentFor (Acid::violet));
+        g.fillRect (w.getX() + 1, w.getY() + pos * w.getHeight() - 2.5f, w.getWidth() - 2, 5.f);
+        if (centred)
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.35f));
+            g.drawHorizontalLine ((int) w.getCentreY(), b.getX(), w.getX());
+        }
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override { dragging = true; mouseDrag (e); }
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        auto w = getLocalBounds().toFloat().withTrimmedTop (16.f).reduced (6.f, 4.f);
+        const float t = juce::jlimit (0.f, 1.f, (e.position.y - w.getY()) / w.getHeight());
+        value = centred ? (0.5f - t) * 2.f : 1.f - t;
+        write (value);
+        repaint();
+    }
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        dragging = false;
+        if (centred) { value = 0.f; write (0.f); repaint(); }
+    }
+
+private:
+    juce::String name;
+    bool centred, dragging = false;
+    float value = 0.f;
+    std::function<float()> read;
+    std::function<void (float)> write;
+};
+
 // Everything inside the window, laid out at a fixed 1200 x 1000 and scaled by the editor
 class MainView : public juce::Component, private juce::Timer
 {
@@ -1685,9 +1756,14 @@ public:
         browseButton.onClick = [this] { openBrowser(); };
         addAndMakeVisible (browseButton);
 
+        pitchWheel.setTooltip ("Pitch bend (springs back). Range: BEND RANGE in the OSC page");
+        modWheel.setTooltip ("Mod wheel: every preset routes it to something (filter, wavetable, warp or detune) in the MATRIX");
+        addAndMakeVisible (pitchWheel);
+        addAndMakeVisible (modWheel);
+
         setSize (AcidanceEditor::baseWidth, AcidanceEditor::baseHeight);
         buildUi();
-        startTimerHz (10);
+        startTimerHz (30);
     }
 
     ~MainView() override
@@ -1956,6 +2032,10 @@ public:
         for (int i = 0; i < tabs.size(); ++i)
             tabs[i]->setBounds (railX + 10, 140 + i * 66, railW - 20, 58);
         browseButton.setBounds (railX + 10, 140 + 7 * 66 + 16, railW - 20, 44);
+        const int wheelY = 140 + 7 * 66 + 16 + 44 + 18;
+        const int wheelH = juce::jmax (80, getHeight() - 64 - 16 - wheelY);
+        pitchWheel.setBounds (railX + 12, wheelY, (railW - 32) / 2, wheelH);
+        modWheel.setBounds (railX + 20 + (railW - 32) / 2, wheelY, (railW - 32) / 2, wheelH);
         skinButton.setBounds (railX + 10, getHeight() - 64, railW - 20, 40);
 
         // Work area with the console along the bottom
@@ -2057,7 +2137,12 @@ private:
 
     void showPage (int index)
     {
+        // a section button always takes you to that section, even from the preset browser
+        if (browser != nullptr)
+            browser.reset();
         currentPage = index;
+        if (juce::isPositiveAndBelow (index, tabs.size()))
+            tabs[index]->setToggleState (true, juce::dontSendNotification);
         for (int i = 0; i < pages.size(); ++i)
         {
             pages[i]->setVisible (i == index);
@@ -2069,13 +2154,22 @@ private:
         }
     }
 
-    void timerCallback() override { runButton.repaint(); }
+    void timerCallback() override
+    {
+        runButton.repaint();
+        pitchWheel.refresh();
+        modWheel.refresh();
+    }
 
     AcidanceProcessor& proc;
     AcidLookAndFeel& lnf;
     juce::TooltipWindow tooltipWindow { this, 600 };
     juce::TextButton skinButton, runButton { "RUN" };
     juce::TextButton browseButton { "BROWSE" };
+    PerfWheel pitchWheel { "PITCH", true, [this] { return proc.uiBend.load(); },
+                           [this] (float v) { proc.screenPitch.store (v); proc.pitchMoved.store (true); } };
+    PerfWheel modWheel { "MOD", false, [this] { return proc.uiMod.load(); },
+                         [this] (float v) { proc.screenMod.store (v); proc.modMoved.store (true); } };
     static constexpr int railX = 12, railW = 136;
     std::unique_ptr<APVTS::ButtonAttachment> runAttachment;
     std::unique_ptr<PanicButton> panicButton;

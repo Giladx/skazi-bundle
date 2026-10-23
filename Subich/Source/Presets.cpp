@@ -49,27 +49,32 @@ namespace
               {
                   switch (g.r.nextInt (5))
                   {
+                      // Psy lines: square / pulse waves with glide between the rolling notes
                       case 0: // full-on rolling
-                          g.osc1 (g.pick ({ Saw, Saw, Square }), -1); g.osc2 (Saw, -1, -12, 12, 0, 35); g.sub (30, 60);
+                          g.osc1 (g.pick ({ Square, Square, Pulse, Saw }), -1, 0, 45); g.osc2 (g.pick ({ Square, Saw }), -1, -12, 12, 0, 35); g.sub (30, 60);
                           g.f1 (LP24, 140, 380, 15, 50, 55, 90, 15, 45); g.fenv (0, 1, 50, 140, 0, 8, 20, 60);
-                          g.amp (0, 1, 80, 170, 0, 25, 15, 50); g.set ("drive", g.rr (25, 55)); break;
+                          g.amp (0, 1, 80, 170, 0, 25, 15, 50); g.set ("drive", g.rr (25, 55));
+                          g.set ("mode", Legato); g.set ("glide", g.rr (20, 70)); break;
                       case 1: // progressive
-                          g.osc1 (g.pick ({ Saw, Square, Tri }), -1); g.osc2 (g.pick ({ Sine, Tri }), -1, -5, 5, 20, 50); g.sub (40, 70);
+                          g.osc1 (g.pick ({ Square, Pulse, Tri }), -1, 0, 50); g.osc2 (g.pick ({ Sine, Square }), -1, -5, 5, 20, 50); g.sub (40, 70);
                           g.f1 (g.pick ({ LP24, LP12 }), 200, 600, 10, 35, 30, 60); g.fenv (0, 2, 120, 300, 10, 40, 40, 120);
-                          g.amp (0, 2, 150, 320, 20, 55, 30, 90); g.set ("drive", g.rr (10, 35)); break;
+                          g.amp (0, 2, 150, 320, 20, 55, 30, 90); g.set ("drive", g.rr (10, 35));
+                          g.set ("mode", Legato); g.set ("glide", g.rr (35, 110)); break;
                       case 2: // dark / forest
-                          g.osc1 (g.pick ({ FM, Saw, Square }), -1, 20, 70); g.osc2 (Saw, -1, -20, 20, 10, 40); g.sub (30, 55);
+                          g.osc1 (g.pick ({ FM, Square, Pulse }), -1, 20, 70); g.osc2 (g.pick ({ Saw, Square }), -1, -20, 20, 10, 40); g.sub (30, 55);
                           g.f1 (g.pick ({ Acid, LP24 }), 180, 450, 45, 80, 50, 85, 20, 60); g.set ("noise", g.rr (3, 15));
                           g.fenv (0, 1, 40, 110, 0, 10, 20, 50); g.amp (0, 1, 70, 150, 0, 20, 15, 45);
-                          g.lfo (1, LSH, g.pick ({ 4, 5, 9 }), 10, 35, DCut1); g.set ("drive", g.rr (35, 70)); break;
+                          g.lfo (1, LSH, g.pick ({ 4, 5, 9 }), 10, 35, DCut1); g.set ("drive", g.rr (35, 70));
+                          g.set ("mode", Legato); g.set ("glide", g.rr (15, 45)); break;
                       case 3: // goa acid
-                          g.osc1 (g.pick ({ Saw, Square }), -1); g.sub (25, 50);
+                          g.osc1 (g.pick ({ Square, Square, Saw }), -1); g.sub (25, 50);
                           g.f1 (Acid, 200, 600, 60, 88, 55, 90, 20, 50); g.fenv (0, 1, 80, 220, 0, 15, 30, 80);
                           g.amp (0, 1, 120, 260, 30, 70, 20, 60); g.set ("mode", Legato); g.set ("glide", g.rr (20, 80)); break;
                       default: // twilight
                           g.osc1 (Square, -1, 10, 50); g.osc2 (Pulse, 0, -8, 8, 10, 30); g.sub (35, 60);
                           g.f1 (LP12, 300, 800, 25, 55, 35, 60); g.fenv (0, 1, 80, 200, 5, 25, 30, 80);
-                          g.amp (0, 1, 100, 220, 10, 40, 20, 60); g.lfo (2, LSine, 0, 2, 6, DPitch, false, g.rr (3, 6)); break;
+                          g.amp (0, 1, 100, 220, 10, 40, 20, 60); g.lfo (2, LSine, 0, 2, 6, DPitch, false, g.rr (3, 6));
+                          g.set ("mode", Legato); g.set ("glide", g.rr (40, 120)); break;
                   }
                   g.hp (30, 45);
               } },
@@ -201,6 +206,16 @@ namespace
         return c;
     }
 
+    // A little personal character on top of the style, so presets in one folder don't sound alike
+    void character (Gen& g)
+    {
+        if (g.v["l2depth"] <= 0.0f && g.chance (0.35f))
+            g.lfo (2, g.pick ({ LSine, LTri }), g.pick ({ 0, 14, 15, 1 }), 3, 12, DCut1);
+        if (g.v["noise"] <= 0.0f && g.chance (0.25f)) g.set ("noise", g.rr (2, 8));
+        if (g.chance (0.3f)) g.set ("drive", juce::jmin (90.0f, g.v["drive"] + g.rr (5, 15)));
+        if (g.chance (0.3f)) g.set ("subwave", 1.0f - g.v["subwave"]);
+    }
+
     std::vector<skazi::Preset> build()
     {
         std::vector<skazi::Preset> list;
@@ -212,6 +227,7 @@ namespace
                 skazi::Preset p { skazi::presetName (g), cat.name, defaultValues() };
                 Gen gen { r, p.values };
                 cat.style (gen);
+                character (gen);
                 list.push_back (std::move (p));
             }
         return list;
@@ -233,6 +249,7 @@ skazi::Preset randomPreset (juce::Random& rng)
     juce::Random r (rng.nextInt64());
     Gen gen { r, p.values };
     cat.style (gen);
+    character (gen);
     return p;
 }
 } // namespace subich

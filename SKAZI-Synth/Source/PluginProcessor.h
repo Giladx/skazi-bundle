@@ -53,6 +53,11 @@ public:
 
     std::atomic<int> currentStep { -1 };
     std::atomic<bool> hostPlaying { false };
+
+    // On-screen PITCH and MOD wheels: the editor writes, processBlock turns them into MIDI.
+    // ui* follow every wheel move (screen or keyboard) so the wheels on screen move too.
+    std::atomic<float> screenPitch { 0.f }, screenMod { 0.f }, uiBend { 0.f }, uiMod { 0.f };
+    std::atomic<bool> pitchMoved { false }, modMoved { false };
     std::atomic<int> programChanges { 0 };
     std::atomic<int> skin { 4 };   // 0 = Neon, 1 = Vintage, 2 = Chrome, 3 = Robot, 4 = Hyper (editor-only, saved with the session)
     std::atomic<float> uiScale { 0.9f };   // editor window size, saved with the session

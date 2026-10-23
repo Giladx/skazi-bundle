@@ -104,8 +104,14 @@ namespace
         float r (float a, float b) { return a + (b - a) * (float) (rng() % 10000) / 9999.f; }
         int ri (int a, int b) { return a + (int) (rng() % (unsigned) (b - a + 1)); }
         bool chance (float pr) { return r (0.f, 1.f) < pr; }
-        void set (const char* id, float v) { if (p != nullptr) p->setParam (id, v); }
-        void set (const juce::String& id, float v) { if (p != nullptr) p->setParam (id, v); }
+        void set (const char* id, float v) { set (juce::String (id), v); }
+        void set (const juce::String& id, float v)
+        {
+            if (p != nullptr) p->setParam (id, v);
+            if (id.endsWith ("_on")) { if (v > 0.5f) fxOn.addIfNotAlreadyThere (id); else fxOn.removeString (id); }
+        }
+        bool has (const char* id) const { return fxOn.contains (id); } // effect switched on by the recipe
+        juce::StringArray fxOn;
 
         // Pattern + custom LFO writers. The RNG is always drawn so dry runs stay in step.
         void seqRandomise (bool arp)
@@ -182,6 +188,7 @@ namespace
         void chorus (float mix, float rate = 0.6f, float depth = 0.5f) { set ("mfx_on", 1.f); set ("mfx_type", 0.f); set ("mfx_mix", mix); set ("mfx_rate", rate); set ("mfx_depth", depth); }
         void phaser (float mix, float rate, float fb) { set ("mfx_on", 1.f); set ("mfx_type", 1.f); set ("mfx_mix", mix); set ("mfx_rate", rate); set ("mfx_fb", fb); }
         void distortion (int type, float drive, float mix) { tag ("dirty"); set ("dist_on", 1.f); set ("dist_type", (float) type); set ("dist_drive", drive); set ("dist_mix", mix); }
+        void ring (float mix, float freq01, float bend, float rate) { tag ("ring"); set ("mfx_on", 1.f); set ("mfx_type", 3.f); set ("mfx_mix", mix); set ("mfx_depth", freq01); set ("mfx_fb", bend); set ("mfx_rate", rate); }
         void ott (float depth) { tag ("ott"); set ("comp_on", 1.f); set ("comp_mode", 1.f); set ("comp_depth", depth); }
         void seqOn (float gate) { tag ("sequenced"); set ("seq_on", 1.f); set ("seq_pattern", 1.f); set ("seq_gate", gate); }
     };
@@ -1200,6 +1207,62 @@ namespace
     }
 
     //==========================================================================
+    // Extra flavour on top of every recipe so no two presets share the same effects or movement:
+    // effects the recipe didn't use are added at random (basses stay tighter: less reverb/delay),
+    // plus 0-3 extra mod-matrix routings on LFOs 6-8 (recipes use LFOs 1-5).
+    void enhance (Ctx& c, int gen)
+    {
+        const bool bassy = gen == 0 || gen == 4 || gen == 5 || gen == 12 || gen == 13 || gen == 14;
+        static const int divs[] = { D16, D16D, D8T, D8, D8D, D4, D4D };
+        if (! c.has ("dly_on") && c.chance (bassy ? 0.2f : 0.5f))
+            c.delay (c.r (0.08f, bassy ? 0.18f : 0.32f), divs[c.ri (0, 6)], c.r (0.2f, 0.55f));
+        if (! c.has ("rev_on") && c.chance (bassy ? 0.12f : 0.5f))
+            c.reverb (c.r (0.08f, bassy ? 0.15f : 0.38f), c.r (0.3f, 0.9f), c.r (0.8f, 5.f));
+        if (! c.has ("mfx_on") && c.chance (bassy ? 0.35f : 0.5f))
+        {
+            switch (c.ri (0, 3))
+            {
+                case 0:  c.chorus (c.r (0.15f, 0.45f), c.r (0.2f, 1.5f), c.r (0.3f, 0.8f)); break;
+                case 1:  c.phaser (c.r (0.15f, 0.45f), c.r (0.1f, 1.2f), c.r (0.2f, 0.7f)); break;
+                case 2:  c.set ("mfx_on", 1.f); c.set ("mfx_type", 2.f); c.set ("mfx_mix", c.r (0.15f, 0.4f)); c.set ("mfx_fb", c.r (0.3f, 0.8f)); c.tag ("flanger"); break;
+                default: c.ring (c.r (0.15f, 0.45f), c.r (0.2f, 0.7f), c.r (0.f, 0.6f), c.r (0.1f, 2.f)); break;
+            }
+        }
+        if (! c.has ("dist_on") && c.chance (bassy ? 0.3f : 0.22f))
+            c.distortion (c.ri (0, 3), c.r (0.1f, 0.45f), c.r (0.3f, 0.8f));
+
+        static const int lfoDivs[] = { D16, D16D, D8T, D8, D8D, D4, Bar1, Bar2 };
+        const int moves = c.ri (0, 3);
+        for (int m = 0; m < moves; ++m)
+        {
+            const int lfoN = 6 + m;
+            const int shape = c.ri (0, 5);
+            if (c.chance (0.7f)) c.lfoSync (lfoN, shape, lfoDivs[c.ri (0, 7)], c.chance (0.4f));
+            else c.lfoHz (lfoN, shape, c.r (0.1f, 8.f));
+            const int src = S_Lfo1 + lfoN - 1;
+            switch (c.ri (0, 6))
+            {
+                case 0: c.mod (src, D_Cut1, c.r (0.1f, 0.45f)); c.tag ("filter sweep"); break;
+                case 1: c.mod (src, D_Osc1Wt, c.r (0.2f, 0.8f)); break;
+                case 2: c.mod (src, D_Pan, c.r (0.2f, 0.7f)); c.tag ("stereo"); break;
+                case 3: c.mod (src, D_Osc1Warp, c.r (0.15f, 0.45f)); break;
+                case 4: c.mod (src, D_Detune, c.r (0.15f, 0.45f)); break;
+                case 5: c.mod (src, D_Res1, c.r (0.1f, 0.35f)); break;
+                default: c.mod (src, D_Osc1Pitch, c.r (0.003f, 0.012f)); c.tag ("vibrato"); break;
+            }
+        }
+        if (moves > 0) c.tag ("moving");
+
+        // the MOD wheel always does something musical
+        switch (c.ri (0, 3))
+        {
+            case 0:  c.mod (S_ModWheel, D_Cut1, c.r (0.25f, 0.5f)); break;
+            case 1:  c.mod (S_ModWheel, D_Osc1Wt, c.r (0.4f, 0.9f)); break;
+            case 2:  c.mod (S_ModWheel, D_Osc1Warp, c.r (0.3f, 0.6f)); break;
+            default: c.mod (S_ModWheel, D_Detune, c.r (0.3f, 0.6f)); break;
+        }
+    }
+
     void run (int gen, Ctx& c, int k)
     {
         switch (gen)
@@ -1238,6 +1301,7 @@ namespace
                     juce::StringArray t;
                     Ctx ctx { nullptr, std::mt19937 (seedFor (index)), &t };
                     run (cat.gen, ctx, l);
+                    enhance (ctx, cat.gen);
                     if (! t.contains ("mono") && ! t.contains ("poly")) t.add ("poly");
                     t.sort (true);
                     m.push_back (t);
@@ -1321,6 +1385,7 @@ namespace Presets
 
         Ctx ctx { &p, std::mt19937 (seedFor (index)), nullptr };
         run (cats[c].gen, ctx, l);
+        enhance (ctx, cats[c].gen);
 
         constexpr int numGains = (int) (sizeof (presetGains) / sizeof (presetGains[0]));
         const float gain = index < numGains ? presetGains[index] : 1.f;
@@ -1342,6 +1407,7 @@ namespace Presets
         for (auto* id : { "dist_on", "comp_on", "dly_on", "rev_on", "mfx_on" })
             ctx.set (id, 0.f);
         randomFx (ctx, ctx.chance (0.4f));
+        enhance (ctx, cats[c].gen); // plus extra effects and mod-matrix movement
         p.setParam ("volume", 0.6f); // unknown loudness, so start a little lower than the factory presets
         return cats[c].name;
     }

@@ -402,6 +402,8 @@ void AcidanceProcessor::resetControllers()
     gm.modWheel = 0.f;
     gm.aftertouch = 0.f;
     gm.bend = 0.f;
+    uiBend.store (0.f);
+    uiMod.store (0.f);
 }
 
 // Kill switch: silences every voice instantly and flushes all DSP state
@@ -470,7 +472,9 @@ void AcidanceProcessor::handleMidi (const juce::MidiMessage& m, bool seqArmed)
 {
     if (m.isPitchWheel())
     {
-        gm.bend = (float) (m.getPitchWheelValue() - 8192) / 8192.f * pBend->load();
+        const float norm = juce::jlimit (-1.f, 1.f, (float) (m.getPitchWheelValue() - 8192) / 8192.f);
+        gm.bend = norm * pBend->load();
+        uiBend.store (norm);
         return;
     }
     if (m.isController())
@@ -483,6 +487,7 @@ void AcidanceProcessor::handleMidi (const juce::MidiMessage& m, bool seqArmed)
     if (m.isController() && m.getControllerNumber() == 1)
     {
         gm.modWheel = m.getControllerValue() / 127.f;
+        uiMod.store (gm.modWheel);
         return;
     }
     if (m.isChannelPressure()) { gm.aftertouch = m.getChannelPressureValue() / 127.f; return; }
@@ -529,6 +534,10 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
 
     const bool panicNow = panicRequest.exchange (false);
     if (panicNow) panic();
+    if (pitchMoved.exchange (false))
+        midi.addEvent (juce::MidiMessage::pitchWheel (1, juce::jlimit (0, 16383, (int) std::round ((screenPitch.load() + 1.f) * 8191.5f))), 0);
+    if (modMoved.exchange (false))
+        midi.addEvent (juce::MidiMessage::controllerEvent (1, 1, juce::jlimit (0, 127, (int) std::round (screenMod.load() * 127.f))), 0);
 
     // --- Transport -------------------------------------------------------
     bool playing = false, hostRunning = false;
