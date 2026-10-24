@@ -79,7 +79,7 @@ make_pkg() {
     local extra=()
     [ -n "$scripts" ] && extra=(--scripts "$scripts")
     pkgbuild --root "$root" --component-plist "$plist" --install-location "$location" \
-             --identifier "$id" --version "$VERSION" "${extra[@]}" "$BUILD/$out"
+             --identifier "$id" --version "$VERSION" ${extra[@]+"${extra[@]}"} "$BUILD/$out" # macOS bash 3.2: empty arrays need this form
 }
 make_pkg "$STAGE/VST3"         "/Library/Audio/Plug-Ins/VST3"       com.skazi.bundle.vst3 vst3.pkg
 make_pkg "$STAGE/Components"   "/Library/Audio/Plug-Ins/Components" com.skazi.bundle.au   au.pkg "$ROOT/mac/scripts-au"
