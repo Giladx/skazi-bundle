@@ -28,6 +28,8 @@
   nav{position:sticky;top:0;z-index:50;background:rgba(7,7,10,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
   nav .wrap{display:flex;align-items:center;gap:28px;height:64px}
   .logo{display:flex;align-items:center;gap:10px;font-family:"Bebas Neue",Impact,sans-serif;font-size:30px;letter-spacing:2px}
+  .logo img{height:64px;width:auto;display:block}
+  @media (max-width:600px){.logo img{height:56px}}
   .logo .ring{width:24px;height:24px;border:3px solid var(--red);border-radius:50%;position:relative}
   .logo .ring:after{content:"";position:absolute;left:50%;top:-6px;width:3px;height:32px;background:#fff;transform:translateX(-50%) rotate(14deg)}
   nav .links{display:flex;gap:24px;margin-left:auto;font-size:14px;color:var(--dim);font-weight:600}
@@ -146,7 +148,7 @@
 
 <nav>
   <div class="wrap">
-    <a class="logo" href="#top"><span>SK</span><span class="ring"></span><span>ZI</span></a>
+    <a class="logo" href="#top"><img src="img/skazi-logo.png?v=2" alt="SKAZI" width="245" height="160"></a>
     <div class="links"><a href="#plugins">Plugins</a><a href="#install">Install</a><a href="#specs">Specs</a><a href="#faq">FAQ</a></div>
     <a class="btn btn-red btn-sm" href="#download">FREE DOWNLOAD</a>
   </div>
@@ -237,6 +239,12 @@
         <div class="body"><h3>THE <em>FILTERFISH</em></h3><div class="sub">Filter FX</div>
           <p>A creative filter with LFO and envelope, plus glitch, distortion, chorus, flanger, delay, reverb and inflate. RANDOM rolls every effect at once.</p>
           <div class="chips"><span class="chip hot">800 presets</span><span class="chip">Many filter types</span><span class="chip">Glitch</span><span class="chip">Full FX chain</span></div></div></article>
+
+      <article class="card"><div class="pic"><span class="badge inst">New · Instrument</span><img src="img/tbon303.png?v=1" alt="TBON 303" class="zoom" loading="lazy"></div>
+        <div class="body"><h3>TBON <em>303</em></h3><div class="sub">Acid bass line synth · by Asher Swissa</div>
+          <p>The acid sound with more power: a 303-style diode ladder filter with accent and slide, a sub oscillator, 14 drive types before and after the filter, circuit mods, chorus, tempo-synced delay, reverb and a 16-step acid sequencer with a pattern generator. RANDOM rolls a new sound.</p>
+          <div class="chips"><span class="chip hot">512 presets</span><span class="chip">Accent + slide</span><span class="chip">14 drive types</span><span class="chip">Acid sequencer</span><span class="chip">Windows · VST3</span></div>
+          <a class="btn btn-red btn-sm" style="align-self:flex-start;margin-top:6px" href="https://github.com/slazoasher/skazi-bundle/releases/download/tbon303-v1.0/TBON303_v1.0_Win64.zip">Download TBON 303 <small>Windows · free</small></a></div></article>
 
     </div>
   </div>
