@@ -14,17 +14,29 @@ on:
       - "docs/**"
       - "**.md"
   workflow_dispatch:
+    inputs:
+      mac_arch:
+        description: macOS architecture for manual builds
+        type: choice
+        required: true
+        default: universal
+        options:
+          - universal
+          - arm64
+          - x86_64
 
 jobs:
   mac:
     runs-on: macos-14
+    env:
+      MAC_ARCH: ${{ inputs.mac_arch || 'universal' }}
     steps:
       - uses: actions/checkout@v4
       - name: Build plugins and SKAZI Bundle.pkg
         run: bash mac/build_mac.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: SKAZI-Bundle-Mac
+          name: SKAZI-Bundle-Mac-${{ inputs.mac_arch || 'universal' }}
           path: dist/SKAZI Bundle.pkg
 
   windows:
@@ -92,7 +104,7 @@ jobs:
             --title "SKAZI Bundle $GITHUB_REF_NAME" \
             --generate-notes
           gh release upload "$GITHUB_REF_NAME" \
-            "release-assets/SKAZI-Bundle-Mac/SKAZI Bundle.pkg" \
+            "release-assets/SKAZI-Bundle-Mac-universal/SKAZI Bundle.pkg" \
             "release-assets/SKAZI-Bundle-Windows/SKAZI Bundle Setup.exe" \
             "release-assets/SKAZI-Bundle-Linux/SKAZI Bundle Linux.tar.gz" \
             "release-assets/SKAZI-Bundle-Linux/SKAZI Bundle Linux.deb"

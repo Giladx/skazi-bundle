@@ -67,6 +67,11 @@ the tarball is available when a distro-specific package is not suitable. Pushing
 as `v1.0.0` runs all three builds and creates a GitHub Release with the Mac, Windows and
 Linux packages.
 
+For Mac builds, `MAC_ARCH=universal` creates one package for Apple Silicon and Intel;
+`MAC_ARCH=arm64` or `MAC_ARCH=x86_64` creates an architecture-specific package. The
+workflow's **Run workflow** form exposes the same three choices, while tagged releases use
+the universal package.
+
 The Mac installer is not signed with an Apple Developer ID, so the first time macOS blocks it:
 right-click the `.pkg`, choose **Open**, then **Open** again (or System Settings > Privacy & Security > Open Anyway).
 
