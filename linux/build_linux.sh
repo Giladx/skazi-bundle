@@ -12,6 +12,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD="${BUILD_DIR:-$ROOT/build-linux}"
 DIST="${DIST_DIR:-$ROOT/dist}"
 JOBS="${JOBS:-$(nproc)}"
+VERSION="${VERSION:-1.0.0}"
 
 mkdir -p "$BUILD" "$DIST"
 
@@ -59,3 +60,25 @@ ARCHIVE="$DIST/SKAZI Bundle Linux.tar.gz"
 rm -f "$ARCHIVE"
 tar -C "$STAGE" -czf "$ARCHIVE" .
 echo "== Done: $ARCHIVE"
+
+# Debian-family package. The VST3 bundle follows the system-wide Linux VST3
+# location; standalone applications remain grouped under /usr/lib/skazi-bundle.
+DEB_ROOT="$BUILD/deb-root"
+DEB="$DIST/SKAZI Bundle Linux.deb"
+rm -rf "$DEB_ROOT"
+mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT/usr/lib/vst3" "$DEB_ROOT/usr/lib/skazi-bundle"
+cp -R "$STAGE/VST3/SKAZI" "$DEB_ROOT/usr/lib/vst3/"
+cp -R "$STAGE/Standalone/SKAZI" "$DEB_ROOT/usr/lib/skazi-bundle/"
+printf '%s\n' \
+    'Package: skazi-bundle' \
+    "Version: ${VERSION#v}" \
+    'Section: sound' \
+    'Priority: optional' \
+    'Architecture: amd64' \
+    'Maintainer: SKAZI' \
+    'Description: SKAZI Bundle audio plugins and standalone applications' \
+    ' Nine SKAZI VST3 plugins and their standalone applications.' \
+    > "$DEB_ROOT/DEBIAN/control"
+rm -f "$DEB"
+dpkg-deb --build --root-owner-group "$DEB_ROOT" "$DEB" >/dev/null
+echo "== Done: $DEB"

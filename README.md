@@ -59,9 +59,13 @@ until then a drawn stand-in is used.
 It must run on a Mac (`bash mac/build_mac.sh`). Without a Mac, push this folder to GitHub:
 `.github/workflows/build-bundle.yml` builds the Mac `.pkg` and the Windows `.exe` on GitHub's
 machines; download them from the run's **Artifacts**. On a Linux host, run
-`bash linux/build_linux.sh` to create `dist/SKAZI Bundle Linux.tar.gz`, containing every
-plugin's VST3 bundle and standalone application. Pushing a tag such as `v1.0.0` runs all
-three builds and creates a GitHub Release with the Mac, Windows and Linux packages.
+`bash linux/build_linux.sh` to create both `dist/SKAZI Bundle Linux.tar.gz` and
+`dist/SKAZI Bundle Linux.deb`. The `.deb` installs the VST3 plugins under `/usr/lib/vst3`
+and the standalone applications under `/usr/lib/skazi-bundle`. CI builds on Ubuntu 22.04
+(glibc 2.35), a Debian-family compatibility baseline for newer Ubuntu and Debian systems;
+the tarball is available when a distro-specific package is not suitable. Pushing a tag such
+as `v1.0.0` runs all three builds and creates a GitHub Release with the Mac, Windows and
+Linux packages.
 
 The Mac installer is not signed with an Apple Developer ID, so the first time macOS blocks it:
 right-click the `.pkg`, choose **Open**, then **Open** again (or System Settings > Privacy & Security > Open Anyway).
