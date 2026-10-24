@@ -1082,6 +1082,8 @@ public:
         prev.onClick = [this] { step (-1); };
         next.onClick = [this] { step (1); };
         rnd.setColour (juce::TextButton::buttonColourId, juce::Colour (0xffc0281e));
+        rnd.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffe0302a));
+        rnd.setToggleState (true, juce::dontSendNotification); // always drawn lit, like PANIC
         rnd.setTooltip ("Random sound with random effects");
         rnd.onClick = [this] { proc.randomizeSound(); repaint(); };
         addAndMakeVisible (rnd);
@@ -1091,13 +1093,13 @@ public:
     void resized() override
     {
         prev.setBounds (0, 0, 36, getHeight());
-        rnd.setBounds (40, 0, 48, getHeight());
+        rnd.setBounds (40, 0, 86, getHeight());
         next.setBounds (getWidth() - 36, 0, 36, getHeight());
     }
 
     void paint (juce::Graphics& g) override
     {
-        auto r = getLocalBounds().withTrimmedLeft (92).withTrimmedRight (40).toFloat();
+        auto r = getLocalBounds().withTrimmedLeft (130).withTrimmedRight (40).toFloat();
         g.setColour (Acid::screen);
         g.fillRoundedRectangle (r, 5.f);
         g.setColour (Acid::accentFor (Acid::violet).withAlpha (0.7f));
@@ -1145,7 +1147,7 @@ private:
 
     AcidanceProcessor& proc;
     std::function<void()> onOpen;
-    juce::TextButton prev { "<" }, next { ">" }, rnd { "RND" };
+    juce::TextButton prev { "<" }, next { ">" }, rnd { "RANDOM" };
     int lastChange = -1;
 };
 
@@ -2056,7 +2058,7 @@ public:
     {
         if (presetBar == nullptr) return;
         // Header: logo | preset | run + tempo / master / pan | PANIC
-        presetBar->setBounds (360, 32, 400, 46);
+        presetBar->setBounds (330, 32, 440, 46);
         runButton.setBounds (780, 30, 80, 44);
         bpmKnob->setBounds (872, 4, 96, 92);
         volumeKnob->setBounds (970, 4, 96, 92);
