@@ -40,6 +40,7 @@ namespace
         if (name == "TAHINI")         return "Space delay + reverb";
         if (name == "ZHUG")           return "Saturator + widener";
         if (name == "BULLY")          return "Wavetable synth: warps, mod matrix, FX";
+        if (name == "KICKASS")        return "Kick drum synth + Splice kick browser";
         return "Plugin";
     }
 
@@ -138,6 +139,29 @@ namespace
             programFiles().getChildFile ("Asher Swissa\\The FilterFish").deleteRecursively();
             deleteIfEmpty (programFiles().getChildFile ("Asher Swissa"));
             startMenu().getChildFile ("The FilterFish.lnk").deleteFile();
+        }
+        if (names.contains ("KICKASS"))
+        {
+            // Early KICKASS builds had their own Inno Setup installer and went straight into VST3\.
+            const String inno = "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{A19DAE55-F5FD-4FA7-8E34-A7A0AF4477AD}_is1";
+            const auto cmd = WindowsRegistry::getValue (inno + "\\UninstallString");
+            if (cmd.isNotEmpty())
+            {
+                ChildProcess p;
+                if (p.start (cmd + " /VERYSILENT /SUPPRESSMSGBOXES /NORESTART", 0))
+                {
+                    p.waitForProcessToFinish (60000);
+                    for (int i = 0; i < 600 && WindowsRegistry::keyExists (inno); ++i)
+                        Thread::sleep (100);
+                }
+            }
+            vst3Root().getChildFile ("KICKASS.vst3").deleteRecursively();
+            programFiles().getChildFile ("SKAZI\\KICKASS").deleteRecursively();
+            programFiles().getChildFile ("Asher Swissa\\KICKASS").deleteRecursively();
+            deleteIfEmpty (programFiles().getChildFile ("Asher Swissa"));
+            startMenu().getChildFile ("KICKASS\\KICKASS.lnk").deleteFile();
+            startMenu().getChildFile ("KICKASS\\Uninstall KICKASS.lnk").deleteFile();
+            deleteIfEmpty (startMenu().getChildFile ("KICKASS"));
         }
     }
 }
