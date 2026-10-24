@@ -291,6 +291,7 @@ void GlitchMagmaProcessor::getStateInformation (juce::MemoryBlock& destData)
 
 void GlitchMagmaProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
+    fader.cancel(); // the saved sound wins over any preset change still waiting
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (apvts.state.getType()))
         {

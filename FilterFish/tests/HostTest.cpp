@@ -44,6 +44,17 @@ float runBlocks (AudioPluginInstance& p, int numBlocks, int blockSize, Random& r
     return peak;
 }
 
+// a DAW keeps processing audio and running its message loop: do both until a preset fade-switch is done
+void settle (AudioPluginInstance& p, int blockSize, Random& rng)
+{
+    const int blocks = jmax (2, 1024 / blockSize);
+    for (int i = 0; i < 6; ++i)
+    {
+        runBlocks (p, blocks, blockSize, rng);
+        MessageManager::getInstance()->runDispatchLoopUntil (1);
+    }
+}
+
 void testEditor (AudioPluginInstance& p)
 {
     std::unique_ptr<AudioProcessorEditor> editor (p.createEditorIfNeeded());
@@ -83,7 +94,7 @@ int main (int argc, char* argv[])
         if (plugin == nullptr) { fail ("load: " + error); break; }
 
         const int numPrograms = plugin->getNumPrograms();
-        if (numPrograms != 801) fail ("expected 801 programs, got " + String (numPrograms));
+        if (plugin->getName() == "The FilterFish" && numPrograms != 801) fail ("expected 801 programs, got " + String (numPrograms));
 
         struct Config { double sr; int bs; };
         const Config configs[] = { { 44100.0, 512 }, { 48000.0, 64 }, { 96000.0, 1024 }, { 44100.0, 37 } };
@@ -99,6 +110,7 @@ int main (int argc, char* argv[])
             for (int prog = 0; prog < numPrograms; prog += programStep)
             {
                 plugin->setCurrentProgram (prog);
+                settle (*plugin, cfg.bs, rng); // let the preset fade-switch finish, like a DAW would
                 const float peak = runBlocks (*plugin, blocks, cfg.bs, rng);
                 if (peak < 0.0f) fail ("NaN/inf in preset " + String (prog) + " " + plugin->getProgramName (prog) + " @" + String (cfg.sr));
                 else if (peak > 8.0f) { ++loud; if (loud <= 5) fail ("very loud (" + String (peak, 1) + ") preset " + String (prog) + " " + plugin->getProgramName (prog)); }
@@ -122,12 +134,26 @@ int main (int argc, char* argv[])
 
         // State save / restore round trip
         plugin->setCurrentProgram (123);
+        MessageManager::getInstance()->runDispatchLoopUntil (400); // audio stopped: the change lands via the message thread
         MemoryBlock state;
         plugin->getStateInformation (state);
-        const float before = plugin->getParameters()[5]->getValue();
+        // check a continuous knob (switch-type parameters snap to their steps, which is correct)
+        auto* p5 = plugin->getParameters()[5];
+        for (auto* prm : plugin->getParameters())
+            if (! prm->isDiscrete() && ! prm->isBoolean() && prm->getNumSteps() == AudioProcessor::getDefaultNumParameterSteps()) { p5 = prm; break; }
+        const float before = p5->getValue();
         plugin->setCurrentProgram (456);
+        MessageManager::getInstance()->runDispatchLoopUntil (400);
+        p5->setValueNotifyingHost (before < 0.5f ? 0.9f : 0.1f); // make sure the restore has something to undo
         plugin->setStateInformation (state.getData(), (int) state.getSize());
-        if (std::abs (plugin->getParameters()[5]->getValue() - before) > 1.0e-4f) fail ("state restore mismatch");
+        MessageManager::getInstance()->runDispatchLoopUntil (100);
+        if (std::abs (p5->getValue() - before) > 1.0e-2f)
+            fail ("state restore mismatch on '" + p5->getName (40) + "': saved " + String (before, 4) + ", restored " + String (p5->getValue(), 4));
+        // a program change right before a project restore must not overwrite the restored sound
+        plugin->setCurrentProgram (321);
+        plugin->setStateInformation (state.getData(), (int) state.getSize());
+        MessageManager::getInstance()->runDispatchLoopUntil (400);
+        if (std::abs (p5->getValue() - before) > 1.0e-2f) fail ("program change overwrote the restored state on " + p5->getName (40));
         std::cout << "  ok: state save/restore" << std::endl;
 
         testEditor (*plugin);

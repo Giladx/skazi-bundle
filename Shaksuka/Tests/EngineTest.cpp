@@ -77,8 +77,66 @@ namespace
     }
 }
 
-int main()
+// Every setting random (corners included), changed every few small blocks, like a DAW fuzz.
+// Prints each round before running it, so a crash shows the settings that caused it.
+static bool fuzz (double sr, int block, int rounds, bool verbose)
 {
+    chop::Engine e;
+    e.prepare (sr);
+    juce::Random r (99);
+    juce::AudioBuffer<float> buf (2, block);
+    long long n = 0;
+    for (int it = 0; it < rounds; ++it)
+    {
+        auto pick = [&] (float lo, float hi) { const float x = r.nextFloat(); return it % 10 == 0 ? (x < 0.5f ? lo : hi) : lo + x * (hi - lo); };
+        chop::Params p;
+        p.freeMode = r.nextBool();
+        p.grid = (int) pick (0, (float) chop::gridNames().size() - 1 + 0.99f);
+        p.freeMs = pick (10.0f, 2000.0f);
+        p.groove = (int) pick (0, 4.99f);
+        p.swing = pick (0.5f, 0.8f);
+        p.humanize = pick (0, 1);
+        p.bars = 1 << (int) pick (0, 2.99f);
+        p.lengthVar = pick (0, 1);
+        p.chaos = pick (0, 1);
+        p.stack = (int) pick (1, 5.99f);
+        p.evolve = pick (0, 1);
+        p.seed = (int) pick (1, 9999);
+        p.mix = pick (0, 1);
+        p.gain = juce::Decibels::decibelsToGain (pick (-24, 12));
+        for (auto& w : p.weights) w = r.nextBool() ? pick (0, 1) : 0.0f;
+        if (verbose)
+        {
+            std::printf ("round %d: free %d grid %d ms %.1f groove %d bars %d stack %d lenvar %.2f\n", it, (int) p.freeMode, p.grid, p.freeMs, p.groove, p.bars, p.stack, p.lengthVar);
+            std::fflush (stdout);
+        }
+        for (int b = 0; b < 6; ++b)
+        {
+            for (int i = 0; i < block; ++i, ++n)
+            {
+                const float s = 0.5f * (float) std::sin (n * 0.03) + 0.2f * (r.nextFloat() * 2 - 1);
+                buf.setSample (0, i, s);
+                buf.setSample (1, i, -s);
+            }
+            e.process (buf, p, nullptr);
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < block; ++i)
+                    if (! std::isfinite (buf.getSample (c, i))) return false;
+        }
+    }
+    return true;
+}
+
+int main (int argc, char**)
+{
+    {
+        const bool verbose = argc > 1;
+        bool ok = true;
+        for (auto [sr, bs] : std::initializer_list<std::pair<double, int>> { { 44100.0, 512 }, { 48000.0, 64 }, { 96000.0, 1024 }, { 44100.0, 37 } })
+            ok = fuzz (sr, bs, 300, verbose) && ok;
+        if (! ok) ++failures;
+        std::printf ("%-28s %s\n", "fuzz: random settings, 4 setups", ok ? "OK" : "FAIL (NaN)");
+    }
     chop::Params base;
     base.chaos = 1.0f;
     base.stack = 5;

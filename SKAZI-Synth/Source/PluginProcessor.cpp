@@ -837,6 +837,7 @@ void AcidanceProcessor::getStateInformation (juce::MemoryBlock& destData)
 
 void AcidanceProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
+    fader.cancel(); // the saved sound wins over any preset change still waiting
     std::unique_ptr<juce::XmlElement> xml (getXmlFromBinary (data, sizeInBytes));
     if (xml == nullptr) return;
     if (auto* extra = xml->getChildByName ("ACIDANCE_DATA"))

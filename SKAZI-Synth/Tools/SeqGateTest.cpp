@@ -41,6 +41,7 @@ int main()
     for (int i = 0; i < Presets::count(); ++i)
     {
         proc.setCurrentProgram (i);
+        proc.fader.flush(); // no message loop here: apply the preset now
         if (proc.apvts.getRawParameterValue ("seq_on")->load() > 0.5f) break;
     }
     std::printf ("preset: %s\n", proc.currentPresetName.toRawUTF8());

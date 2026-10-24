@@ -18,8 +18,9 @@ public:
 
     void change (std::function<void()> apply)
     {
-        // no audio running (host stopped, offline render, editor only): change at once
-        if (juce::Time::getMillisecondCounter() - lastBlockMs.load() > 150)
+        // no audio running (host stopped, offline render, editor only), or a host calling from
+        // another thread (program change from the audio thread): change at once
+        if (juce::Time::getMillisecondCounter() - lastBlockMs.load() > 150 || ! juce::MessageManager::existsAndIsCurrentThread())
         {
             apply();
             return;
@@ -29,6 +30,22 @@ public:
         if (s == Normal || s == FadeIn) state.store (FadeOut);
         else if (s == Silent) triggerAsyncUpdate();
         startTimer (250); // safety net if the host stops processing mid-fade
+    }
+
+    // A saved project is being restored: drop any preset change still waiting, so it cannot
+    // overwrite the restored sound (some hosts set a program right before restoring state)
+    void cancel()
+    {
+        pending = nullptr;
+        if (state.load() != Normal) state.store (FadeIn);
+    }
+
+    // Offline tools and tests without a running message loop: apply now
+    void flush()
+    {
+        if (pending) { auto f = std::move (pending); pending = nullptr; f(); }
+        state.store (Normal);
+        gain = 1.0f;
     }
 
     void process (juce::AudioBuffer<float>& buffer, double sampleRate)

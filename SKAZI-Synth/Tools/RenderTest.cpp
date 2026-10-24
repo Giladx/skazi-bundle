@@ -18,6 +18,7 @@ namespace
     {
         AcidanceProcessor proc;
         proc.setCurrentProgram (preset);
+        proc.fader.flush(); // no message loop here: apply the preset now
         proc.setPlayConfigDetails (0, 2, sr, block);
         proc.prepareToPlay (sr, block);
 
@@ -155,6 +156,7 @@ int main (int argc, char** argv)
         // Print every parameter that differs from its default for one preset
         AcidanceProcessor proc;
         proc.setCurrentProgram (juce::String (argv[3]).getIntValue());
+        proc.fader.flush(); // no message loop here: apply the preset now
         std::printf ("%s / %s\n", proc.currentPresetFolder.toRawUTF8(), proc.currentPresetName.toRawUTF8());
         for (auto* p : proc.getParameters())
             if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
@@ -268,6 +270,7 @@ int main (int argc, char** argv)
     {
         AcidanceProcessor proc;
         proc.setCurrentProgram (Presets::categoryStart (7));   // a pad with a long tail
+        proc.fader.flush(); // no message loop here: apply the preset now
         proc.setPlayConfigDetails (0, 2, sr, block);
         proc.prepareToPlay (sr, block);
         juce::AudioBuffer<float> buf (2, block);
@@ -287,6 +290,7 @@ int main (int argc, char** argv)
     // Snapshot every tab in every skin, plus the preset browser
     AcidanceProcessor proc;
     proc.setCurrentProgram (Presets::categoryStart (0) + 3);
+    proc.fader.flush(); // no message loop here: apply the preset now
     proc.currentStep = 4;
     proc.uiScale = 1.f;
     std::function<void (juce::Component*, juce::Array<juce::TextButton*>&)> findTabs;

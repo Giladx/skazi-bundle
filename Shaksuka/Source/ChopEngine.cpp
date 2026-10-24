@@ -523,6 +523,9 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Params& p, juce::A
         lastHash = h;
         numSteps = n;
         generate (p);
+        // a shorter pattern: keep the play position and any delayed hit inside it
+        curPatternIdx %= numSteps;
+        if (pendingIdx >= numSteps) pendingIdx = -1;
     }
 
     const double beatsPerSample = 1.0 / samplesPerBeat;
@@ -571,7 +574,7 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Params& p, juce::A
         // waveform display: peak per slot across one pattern loop
         const double frac = juce::jlimit (0.0, 0.999, samplesInStep / stepSamples);
         samplesInStep += 1.0;
-        const int slot = (int) ((curPatternIdx + frac) / numSteps * kDisplaySlots);
+        const int slot = juce::jlimit (0, kDisplaySlots - 1, (int) ((curPatternIdx + frac) / numSteps * kDisplaySlots));
         if (slot != peakSlot)
         {
             if (peakSlot >= 0)
