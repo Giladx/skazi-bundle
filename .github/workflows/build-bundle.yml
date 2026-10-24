@@ -6,6 +6,9 @@ name: Build SKAZI Bundle
 # Download them from the run's "Artifacts" section.
 on:
   push:
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
   workflow_dispatch:
 
 jobs:
