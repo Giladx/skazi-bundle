@@ -1,11 +1,15 @@
 name: Build SKAZI Bundle
 
-# Builds every SKAZI plugin and both installers:
+# Builds every SKAZI plugin and the platform packages:
 #   Mac:     SKAZI Bundle.pkg          (VST3 + AU + apps, Apple Silicon + Intel)
 #   Windows: SKAZI Bundle Setup.exe    (VST3 + apps)
-# Download them from the run's "Artifacts" section.
+#   Linux:   SKAZI Bundle Linux.tar.gz (VST3 + apps)
+# Download them from the run's "Artifacts" section. A v* tag also creates a
+# GitHub Release containing all three packages.
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
     paths-ignore:
       - "docs/**"
       - "**.md"
@@ -34,3 +38,36 @@ jobs:
         with:
           name: SKAZI-Bundle-Windows
           path: dist/SKAZI Bundle Setup.exe
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Linux bundle
+        run: bash linux/build_linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SKAZI-Bundle-Linux
+          path: dist/SKAZI Bundle Linux.tar.gz
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [mac, windows, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "SKAZI Bundle $GITHUB_REF_NAME" \
+            --generate-notes
+          gh release upload "$GITHUB_REF_NAME" \
+            "release-assets/SKAZI-Bundle-Mac/SKAZI Bundle.pkg" \
+            "release-assets/SKAZI-Bundle-Windows/SKAZI Bundle Setup.exe" \
+            "release-assets/SKAZI-Bundle-Linux/SKAZI Bundle Linux.tar.gz"
