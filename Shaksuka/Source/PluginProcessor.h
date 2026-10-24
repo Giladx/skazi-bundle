@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "../../Common/PresetFader.h"
 #include <map>
 #include "ChopEngine.h"
 
@@ -46,6 +47,7 @@ public:
 
     juce::UndoManager undo;
     juce::AudioProcessorValueTreeState apvts;
+    skazi::PresetFader fader; // fades around preset changes
     chop::Engine engine;
 
     static juce::String weightId (int fx) { return "w" + juce::String (fx); }

@@ -28,6 +28,7 @@ void ZhugProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
 {
     juce::ScopedNoDenormals noDenormals;
     engine.process (buffer, settings());
+    finishBlock (buffer); // smooth preset changes
 }
 
 juce::AudioProcessorEditor* ZhugProcessor::createEditor() { return new ZhugEditor (*this); }

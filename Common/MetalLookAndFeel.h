@@ -148,7 +148,7 @@ inline void drawLogoBadge (juce::Graphics& g, juce::Rectangle<float> r, const ju
     auto in = r.reduced (8.0f, 4.0f);
     if (logo.isValid())
     {
-        g.drawImage (logo, in, RectanglePlacement::centred);
+        g.drawImage (logo, r.reduced (4.0f, 2.0f), RectanglePlacement::centred);
         return;
     }
 

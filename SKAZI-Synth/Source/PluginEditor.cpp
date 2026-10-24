@@ -2,9 +2,27 @@
 #include "Presets.h"
 #include <array>
 #include <initializer_list>
+#if SKAZI_HAS_LOGO
+ #include "BinaryData.h"
+#endif
 
 namespace
 {
+    // The SKAZI logo on a black badge; false when the build has no logo image
+    bool drawBrandLogo (juce::Graphics& g, juce::Rectangle<float> r)
+    {
+#if SKAZI_HAS_LOGO
+        static const juce::Image logo = juce::ImageCache::getFromMemory (BinaryData::skazi_logo_png, BinaryData::skazi_logo_pngSize);
+        g.setColour (juce::Colours::black);
+        g.fillRoundedRectangle (r, 6.f);
+        g.drawImage (logo, r.reduced (4.f, 3.f), juce::RectanglePlacement::centred);
+        return true;
+#else
+        juce::ignoreUnused (g, r);
+        return false;
+#endif
+    }
+
     const char* const noteNames[13] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B", "C" };
     bool isBlackKey (int n) { n %= 12; return n == 1 || n == 3 || n == 6 || n == 8 || n == 10; }
 
@@ -1802,20 +1820,25 @@ public:
             g.drawHorizontalLine (108, 0.f, (float) getWidth());
 
             // Chrome wordmark with neon underline
-            juce::GlyphArrangement ga;
-            const auto logoFont = Acid::font (44.f).withExtraKerningFactor (0.16f);
-            ga.addLineOfText (logoFont, "SKAZI", 30.f, 56.f);
-            juce::Path logo;
-            ga.createPath (logo);
-            juce::DropShadow (juce::Colours::black.withAlpha (0.45f), 4, { 0, 2 }).drawForPath (g, logo);
-            juce::ColourGradient chrome (juce::Colour (0xff2b2d33), 0.f, 18.f, juce::Colour (0xff2b2d33), 0.f, 58.f, false);
-            chrome.addColour (0.45, juce::Colour (0xfff4f5f7));
-            chrome.addColour (0.55, juce::Colour (0xff5a5d65));
-            g.setGradientFill (chrome);
-            g.fillPath (logo);
+            float logoRight = 132.f;
+            if (! drawBrandLogo (g, { 28.f, 6.f, 104.f, 56.f }))
+            {
+                juce::GlyphArrangement ga;
+                const auto logoFont = Acid::font (44.f).withExtraKerningFactor (0.16f);
+                ga.addLineOfText (logoFont, "SKAZI", 30.f, 56.f);
+                juce::Path logo;
+                ga.createPath (logo);
+                juce::DropShadow (juce::Colours::black.withAlpha (0.45f), 4, { 0, 2 }).drawForPath (g, logo);
+                juce::ColourGradient chrome (juce::Colour (0xff2b2d33), 0.f, 18.f, juce::Colour (0xff2b2d33), 0.f, 58.f, false);
+                chrome.addColour (0.45, juce::Colour (0xfff4f5f7));
+                chrome.addColour (0.55, juce::Colour (0xff5a5d65));
+                g.setGradientFill (chrome);
+                g.fillPath (logo);
+                logoRight = std::max (120.f, logo.getBounds().getRight());
+            }
             juce::Path neon;
             neon.startNewSubPath (32.f, 66.f);
-            neon.lineTo (std::max (120.f, logo.getBounds().getRight()), 66.f);
+            neon.lineTo (logoRight, 66.f);
             Acid::glowStroke (g, neon, Acid::green, 2.f);
             g.setColour (Acid::text);
             g.setFont (Acid::font (16.5f).withExtraKerningFactor (0.16f));
@@ -1837,9 +1860,12 @@ public:
             for (float x : { 22.f, (float) getWidth() - 22.f })
                 for (float y : { 10.f, 98.f })
                     Acid::screw (g, x, y, 3.5f);
-            g.setColour (Acid::text);
-            g.setFont (Acid::font (40.f).withExtraKerningFactor (0.22f));
-            g.drawText ("SKAZI", 36, 10, 380, 50, juce::Justification::centredLeft);
+            if (! drawBrandLogo (g, { 32.f, 6.f, 92.f, 50.f }))
+            {
+                g.setColour (Acid::text);
+                g.setFont (Acid::font (40.f).withExtraKerningFactor (0.22f));
+                g.drawText ("SKAZI", 36, 10, 380, 50, juce::Justification::centredLeft);
+            }
             g.setColour (Acid::green);
             g.fillRect (38.f, 70.f, 30.f, 2.f);
             g.setColour (Acid::text.withAlpha (0.9f));
@@ -1855,15 +1881,18 @@ public:
             g.setColour (Acid::panel.withAlpha (0.6f));
             for (int x = 0; x < getWidth(); x += 24) g.drawVerticalLine (x, 0.f, (float) getHeight());
             for (int y = 0; y < getHeight(); y += 24) g.drawHorizontalLine (y, 0.f, (float) getWidth());
-            const juce::Rectangle<int> logo (28, 12, 360, 56);
-            g.setFont (Acid::font (50.f));
-            for (int i = 4; i >= 1; --i)
+            if (! drawBrandLogo (g, { 28.f, 6.f, 104.f, 56.f }))
             {
-                g.setColour (Acid::green.withAlpha (0.05f * (5 - i)));
-                g.drawText ("SKAZI", logo.expanded (i, i), juce::Justification::centredLeft);
+                const juce::Rectangle<int> logo (28, 12, 360, 56);
+                g.setFont (Acid::font (50.f));
+                for (int i = 4; i >= 1; --i)
+                {
+                    g.setColour (Acid::green.withAlpha (0.05f * (5 - i)));
+                    g.drawText ("SKAZI", logo.expanded (i, i), juce::Justification::centredLeft);
+                }
+                g.setGradientFill (juce::ColourGradient (Acid::green, 28.f, 0.f, Acid::magenta, 330.f, 0.f, false));
+                g.drawText ("SKAZI", logo, juce::Justification::centredLeft);
             }
-            g.setGradientFill (juce::ColourGradient (Acid::green, 28.f, 0.f, Acid::magenta, 330.f, 0.f, false));
-            g.drawText ("SKAZI", logo, juce::Justification::centredLeft);
             g.setFont (Acid::font (18.f));
             g.setColour (Acid::text);
             g.drawText ("BY ASHER SWISSA", 30, 64, 360, 24, juce::Justification::centredLeft);
@@ -1897,13 +1926,16 @@ public:
         g.fillRect (10.f, 99.f, (float) getWidth() - 20.f, 2.f);
 
         // Italic wordmark with a red swoosh
-        juce::GlyphArrangement ga;
-        ga.addLineOfText (Acid::font (58.f).italicised().withExtraKerningFactor (0.04f), "SKAZI", 26.f, 62.f);
-        juce::Path logo;
-        ga.createPath (logo);
-        juce::DropShadow (juce::Colours::black, 6, { 2, 3 }).drawForPath (g, logo);
-        g.setColour (juce::Colours::white);
-        g.fillPath (logo);
+        if (! drawBrandLogo (g, { 26.f, 5.f, 106.f, 57.f }))
+        {
+            juce::GlyphArrangement ga;
+            ga.addLineOfText (Acid::font (58.f).italicised().withExtraKerningFactor (0.04f), "SKAZI", 26.f, 62.f);
+            juce::Path logo;
+            ga.createPath (logo);
+            juce::DropShadow (juce::Colours::black, 6, { 2, 3 }).drawForPath (g, logo);
+            g.setColour (juce::Colours::white);
+            g.fillPath (logo);
+        }
         juce::Path swoosh;
         swoosh.startNewSubPath (28.f, 74.f);
         swoosh.quadraticTo (140.f, 64.f, 236.f, 70.f);
@@ -1975,13 +2007,16 @@ public:
         }
 
         // Wordmark: SKAZI with cyan glow and a segmented underline
-        juce::GlyphArrangement ga;
-        ga.addLineOfText (Acid::font (54.f).withExtraKerningFactor (0.28f), "SKAZI", 26.f, 58.f);
-        juce::Path logo;
-        ga.createPath (logo);
-        juce::DropShadow (cyan.withAlpha (0.6f), 14, {}).drawForPath (g, logo);
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffeaf8ff), 0.f, 14.f, juce::Colour (0xff8fd9ea), 0.f, 60.f, false));
-        g.fillPath (logo);
+        if (! drawBrandLogo (g, { 28.f, 8.f, 102.f, 54.f }))
+        {
+            juce::GlyphArrangement ga;
+            ga.addLineOfText (Acid::font (54.f).withExtraKerningFactor (0.28f), "SKAZI", 26.f, 58.f);
+            juce::Path logo;
+            ga.createPath (logo);
+            juce::DropShadow (cyan.withAlpha (0.6f), 14, {}).drawForPath (g, logo);
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffeaf8ff), 0.f, 14.f, juce::Colour (0xff8fd9ea), 0.f, 60.f, false));
+            g.fillPath (logo);
+        }
         for (int i = 0; i < 12; ++i)
         {
             g.setColour (i < 9 ? cyan : orange);

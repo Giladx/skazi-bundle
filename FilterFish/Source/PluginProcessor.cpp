@@ -251,6 +251,7 @@ void GlitchMagmaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         buffer.clear();
         resetDsp();
     }
+    fader.process (buffer, getSampleRate());
 }
 
 int GlitchMagmaProcessor::getNumPrograms() { return presets::numPrograms; }
@@ -264,18 +265,20 @@ void GlitchMagmaProcessor::setCurrentProgram (int index)
         return;
     currentProgram = index;
     randomPreset = false;
-    presets::applyFactory (index, apvts);
-    ++presetVersion;
+    fader.change ([this, index] { presets::applyFactory (index, apvts); ++presetVersion; }); // fade out, switch, fade in
 }
 
 void GlitchMagmaProcessor::randomize()
 {
-    juce::Random r (juce::Time::currentTimeMillis());
-    const int bank = r.nextInt (presets::numBanks);
-    presets::randomizeAll (bank, r, apvts);
-    randomPreset = true;
-    randomName = "Random " + presets::bankNames()[bank] + " #" + juce::String (r.nextInt (10000)).paddedLeft ('0', 4);
-    ++presetVersion;
+    fader.change ([this]
+    {
+        juce::Random r (juce::Time::currentTimeMillis());
+        const int bank = r.nextInt (presets::numBanks);
+        presets::randomizeAll (bank, r, apvts);
+        randomPreset = true;
+        randomName = "Random " + presets::bankNames()[bank] + " #" + juce::String (r.nextInt (10000)).paddedLeft ('0', 4);
+        ++presetVersion;
+    });
 }
 
 void GlitchMagmaProcessor::getStateInformation (juce::MemoryBlock& destData)

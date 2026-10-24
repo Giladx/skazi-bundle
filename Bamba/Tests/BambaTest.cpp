@@ -18,13 +18,13 @@ namespace
 
     struct Run { std::vector<float> env; float peak = 0; bool finite = true; double rms = 0; };
 
-    // renders `seconds`; env holds the RMS of each 1/8 of the run
-    Run render (const Settings& s, double seconds, bool freeRun, std::vector<int> noteAt = {})
+    // renders `seconds`; a note starts at each `noteAt` sample and ends at `offAt` (-1: never);
+    // env holds the RMS of each 1/8 of the run
+    Run render (const Settings& s, double seconds, std::vector<int> noteAt = {}, int offAt = -1)
     {
         const double sr = 48000.0;
         Engine e;
         e.prepare (sr);
-        e.setFreeRun (freeRun);
         juce::AudioBuffer<float> buf (2, 480);
         const int total = (int) (sr * seconds);
         Run r;
@@ -35,6 +35,7 @@ namespace
             juce::MidiBuffer midi;
             for (int at : noteAt)
                 if (at >= pos && at < pos + 480) midi.addEvent (juce::MidiMessage::noteOn (1, 60, 1.0f), at - pos);
+            if (offAt >= pos && offAt < pos + 480) midi.addEvent (juce::MidiMessage::noteOff (1, 60), offAt - pos);
             e.render (buf, midi, s, nullptr);
             for (int i = 0; i < 480; ++i)
             {
@@ -56,41 +57,52 @@ int main()
     const char* names[] = { "UPLIFTER", "DOWNLIFTER", "NOISE SWEEP", "IMPACT", "SNARE ROLL", "REVERSE CRASH", "LASER", "SIREN", "SUB DROP", "RANDOM FX" };
     Settings s = Settings::fromValues ([] (const char* id) { return skazi::defaultValues (paramDefs()).at (id); });
     s.bars = 1; // 2 s at 120 bpm
+    expect (s.trigger == Midi, "default: plays while the note is held");
 
     for (int type = 0; type < NumTypes; ++type)
     {
-        auto t = s; t.type = type; t.roll = 0.5f;
-        const auto r = render (t, 4.0, true);
-        expect (r.finite && r.peak <= 1.0f && r.rms > 0.005, juce::String ("SYNC loop: ") + names[type], "rms " + juce::String (r.rms, 3) + "  peak " + juce::String (r.peak, 2));
+        auto t = s; t.type = type; t.roll = 0.5f; t.trigger = Sync;
+        const auto r = render (t, 4.0, { 0, 96000 });
+        expect (r.finite && r.peak <= 1.0f && r.rms > 0.005, juce::String ("note fires: ") + names[type], "rms " + juce::String (r.rms, 3) + "  peak " + juce::String (r.peak, 2));
     }
 
     // shapes: an uplifter gets louder, a downlifter quieter (dry, one 2-second pass)
     {
-        auto t = s; t.reverb = 0; t.delay = 0; t.type = Uplifter; t.curve = 0.6f;
-        auto r = render (t, 2.0, true);
+        auto t = s; t.reverb = 0; t.delay = 0; t.type = Uplifter; t.curve = 0.6f; t.trigger = Sync;
+        auto r = render (t, 2.0, { 0 });
         expect (r.env[7] > r.env[0] * 2.0f, "UPLIFTER rises", juce::String (r.env[0], 3) + " -> " + juce::String (r.env[7], 3));
         t.type = Downlifter;
-        r = render (t, 2.0, true);
+        r = render (t, 2.0, { 0 });
         expect (r.env[0] > r.env[7] * 2.0f, "DOWNLIFTER falls", juce::String (r.env[0], 3) + " -> " + juce::String (r.env[7], 3));
         t.type = ReverseCrash;
-        r = render (t, 2.0, true);
+        r = render (t, 2.0, { 0 });
         expect (r.env[7] > r.env[2] * 3.0f, "REVERSE CRASH swells into the end", juce::String (r.env[2], 3) + " -> " + juce::String (r.env[7], 3));
     }
 
-    // SYNC without a playing song is silent (inside a DAW)
+    // no notes, no sound - in both modes
+    for (int trig : { (int) Sync, (int) Midi })
     {
-        const auto r = render (s, 1.0, false);
-        expect (r.peak == 0.0f, "SYNC waits for the song to play");
+        auto t = s; t.trigger = trig;
+        const auto r = render (t, 2.0);
+        expect (r.peak == 0.0f, juce::String ("silent without notes (") + (trig == Sync ? "FULL BARS)" : "HOLD NOTE)"));
     }
 
-    // MIDI trigger: silent until a note, then plays one pass and stops
+    // FULL BARS: a short note still plays the whole pass, then stops
     {
-        auto t = s; t.trigger = Midi; t.reverb = 0; t.delay = 0;
-        auto r = render (t, 1.0, false);
-        expect (r.peak == 0.0f, "MIDI mode silent without notes");
-        r = render (t, 6.0, false, { 0 });
-        expect (r.env[0] > 0.01f && r.env[6] < 1.0e-4f && r.env[7] < 1.0e-4f, "MIDI note plays one 1-bar pass",
-                "start " + juce::String (r.env[0], 3) + "  after " + juce::String (r.env[7], 5));
+        auto t = s; t.trigger = Sync; t.reverb = 0; t.delay = 0;
+        const auto r = render (t, 6.0, { 0 }, 4800);
+        expect (r.env[2] > 0.01f && r.env[7] < 1.0e-4f, "FULL BARS: short note plays one full pass",
+                "mid " + juce::String (r.env[2], 3) + "  after " + juce::String (r.env[7], 5));
+    }
+
+    // HOLD NOTE: stops soon after the note ends
+    {
+        auto t = s; t.trigger = Midi; t.reverb = 0; t.delay = 0; t.type = NoiseSweep;
+        const auto r = render (t, 2.0, { 0 }, 24000); // note held 0.5 s of a 2 s effect
+        expect (r.env[0] > 0.0005f && r.env[3] < 1.0e-4f, "HOLD NOTE: stops when the note ends",
+                "start " + juce::String (r.env[0], 4) + "  after " + juce::String (r.env[3], 5));
+        const auto full = render (t, 2.0, { 0 });
+        expect (full.env[5] > 0.01f, "HOLD NOTE: keeps going while held", juce::String (full.env[5], 3));
     }
 
     // presets
@@ -104,7 +116,7 @@ int main()
         values.insert (p.values);
         auto ps = Settings::fromValues ([&p] (const char* id) { return p.values.at (id); });
         ps.trigger = Sync;
-        const auto r = render (ps, ps.bars * 2.0 + 0.5, true); // one full pass at 120 bpm
+        const auto r = render (ps, ps.bars * 2.0 + 0.5, { 0 }); // one full pass at 120 bpm
         if (! (r.finite && r.peak <= 1.0f && r.rms > 0.002))
             if (++bad <= 5) std::printf ("  bad preset %s / %s rms %.4f\n", p.category.toRawUTF8(), p.name.toRawUTF8(), r.rms);
     }

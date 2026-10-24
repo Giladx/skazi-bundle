@@ -1,5 +1,8 @@
 #include "PluginEditor.h"
 #include "Presets.h"
+#if SKAZI_HAS_LOGO
+ #include "BinaryData.h"
+#endif
 
 using namespace juce;
 
@@ -665,10 +668,18 @@ void GlitchMagmaEditor::paint (Graphics& g)
         drawScrew (g, { x, h - 5.0f }, 2.2f, x * 0.07f);
     }
 
-    // Title plate
+    // Title plate, then the SKAZI logo on its own black plate
     auto t = titleArea.toFloat().reduced (0.0f, 6.0f);
     drawRecess (g, t, 6.0f, Colour (0xff0a0b0d));
     const auto inner = t.reduced (14.0f, 4.0f);
+    float lx = t.getRight() + 18.0f;
+#if SKAZI_HAS_LOGO
+    static const Image logo = ImageCache::getFromMemory (BinaryData::skazi_logo_png, BinaryData::skazi_logo_pngSize);
+    const Rectangle<float> plate (t.getRight() + 10.0f, t.getY(), t.getHeight() * 1.8f, t.getHeight());
+    drawRecess (g, plate, 6.0f, Colours::black);
+    g.drawImage (logo, plate.reduced (4.0f, 2.0f), RectanglePlacement::centred);
+    lx = plate.getRight() + 18.0f;
+#endif
     g.setFont (stencil (jmin (28.0f, inner.getHeight() * 0.62f)));
     drawGlowText (g, "THE FILTERFISH", inner.withTrimmedBottom (inner.getHeight() * 0.3f), theme::lcdText, Justification::centredLeft);
     g.setFont (mono (11.0f, true));
@@ -676,7 +687,6 @@ void GlitchMagmaEditor::paint (Graphics& g)
 
     // Row of status lamps next to the title
     const float lampY = t.getCentreY();
-    float lx = t.getRight() + 18.0f;
     for (auto colour : { theme::dist, theme::inflate, theme::delay, theme::reverb })
     {
         drawLamp (g, { lx, lampY }, 4.0f, colour, true);
@@ -693,7 +703,7 @@ void GlitchMagmaEditor::resized()
 
     auto header = r.removeFromTop (roundToInt ((float) r.getHeight() * 0.08f));
     titleArea = header.removeFromLeft (header.getWidth() / 4);
-    header.removeFromLeft (90);
+    header.removeFromLeft (90 + roundToInt ((float) (header.getHeight() - 12) * 1.8f) + 10); // logo plate + lamps
     randomButton.setBounds (header.removeFromRight (120).reduced (4, 6));
     nextButton.setBounds (header.removeFromRight (46).reduced (2, 6));
     presetBox.setBounds (header.removeFromRight (jmin (460, header.getWidth() - 50)).reduced (2, 9));

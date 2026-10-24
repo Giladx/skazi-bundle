@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "../../Common/PresetFader.h"
 #include <juce_dsp/juce_dsp.h>
 #include <array>
 #include "SynthVoice.h"
@@ -48,6 +49,7 @@ public:
     juce::String currentPresetName, currentPresetFolder;
 
     juce::AudioProcessorValueTreeState apvts;
+    skazi::PresetFader fader; // fades around preset changes
     BassBank seq;
     std::atomic<float> lfoCustom[kNumLfos][kLfoSteps];
 

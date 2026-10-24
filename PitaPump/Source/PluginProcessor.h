@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "../../Common/PresetFader.h"
 #include <map>
 #include "PumpEngine.h"
 
@@ -48,6 +49,7 @@ public:
 
     juce::UndoManager undo;
     juce::AudioProcessorValueTreeState apvts;
+    skazi::PresetFader fader; // fades around preset changes
     pump::Engine engine;
 
 private:

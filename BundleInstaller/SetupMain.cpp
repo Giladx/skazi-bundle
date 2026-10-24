@@ -39,6 +39,7 @@ namespace
         if (name == "BAMBA")          return "Riser & FX maker";
         if (name == "TAHINI")         return "Space delay + reverb";
         if (name == "ZHUG")           return "Saturator + widener";
+        if (name == "BULLY")          return "Wavetable synth: warps, mod matrix, FX";
         return "Plugin";
     }
 

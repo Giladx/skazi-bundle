@@ -27,6 +27,7 @@ void TahiniProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 {
     juce::ScopedNoDenormals noDenormals;
     engine.process (buffer, settings(), getPlayHead());
+    finishBlock (buffer); // smooth preset changes
 }
 
 juce::AudioProcessorEditor* TahiniProcessor::createEditor() { return new TahiniEditor (*this); }

@@ -56,6 +56,14 @@ if(FILTERFISH_TESTS)
         PUBLIC juce::juce_recommended_config_flags)
 endif()
 
+# The SKAZI logo (../Resources/skazi_logo.png) shown in the header
+set(LOGO "${CMAKE_CURRENT_SOURCE_DIR}/../Resources/skazi_logo.png")
+if(EXISTS "${LOGO}")
+    juce_add_binary_data(FilterFishLogo SOURCES "${LOGO}")
+    target_link_libraries(FilterFish PRIVATE FilterFishLogo)
+    target_compile_definitions(FilterFish PRIVATE SKAZI_HAS_LOGO=1)
+endif()
+
 target_link_libraries(FilterFish
     PRIVATE
         juce::juce_audio_utils

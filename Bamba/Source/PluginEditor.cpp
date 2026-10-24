@@ -96,8 +96,7 @@ void BambaDisplay::paint (Graphics& g)
     const String dot = String::fromUTF8 ("  \xc2\xb7  ");
     String info = String (names[s.type]);
     if (s.type == RandomFx) info << " (" << names[shownType] << ")";
-    info << dot << bars << (bars == 1 ? " BAR" : " BARS") << dot << (s.trigger == Sync ? "SYNC TO SONG" : "MIDI TRIGGER");
-    if (s.trigger == Sync && s.offset > 0) info << dot << "STARTS BAR " << (s.offset + 1);
+    info << dot << bars << (bars == 1 ? " BAR" : " BARS") << dot << (s.trigger == Sync ? "EACH NOTE PLAYS THE FULL LENGTH" : "PLAYS WHILE THE NOTE IS HELD");
     g.setFont (skin::font (10.5f));
     const float tw = GlyphArrangement::getStringWidth (g.getCurrentFont(), info) + 14.0f;
     g.setColour (Colours::black.withAlpha (0.65f));
@@ -187,5 +186,5 @@ void BambaEditor::layout()
 void BambaEditor::tick()
 {
     display.repaint();
-    offset->setAlpha (bp.v ("trigger") < 0.5f ? 1.0f : 0.4f);
+    offset->setVisible (false); // BAMBA now starts on notes only
 }

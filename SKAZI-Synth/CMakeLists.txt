@@ -48,6 +48,14 @@ target_compile_definitions(SKAZI PUBLIC
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
+# The SKAZI logo (../Resources/skazi_logo.png) shown in the header
+set(LOGO "${CMAKE_CURRENT_SOURCE_DIR}/../Resources/skazi_logo.png")
+if(EXISTS "${LOGO}")
+    juce_add_binary_data(SkaziLogo SOURCES "${LOGO}")
+    target_link_libraries(SKAZI PRIVATE SkaziLogo)
+    target_compile_definitions(SKAZI PRIVATE SKAZI_HAS_LOGO=1)
+endif()
+
 target_link_libraries(SKAZI
     PRIVATE
         juce::juce_audio_utils

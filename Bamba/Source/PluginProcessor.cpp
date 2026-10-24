@@ -17,14 +17,13 @@ bool BambaProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 void BambaProcessor::prepareToPlay (double sampleRate, int)
 {
     engine.prepare (sampleRate);
-    // the standalone app has no song transport, so SYNC mode loops on its own clock there
-    engine.setFreeRun (wrapperType == wrapperType_Standalone);
 }
 
 void BambaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
     engine.render (buffer, midi, settings(), getPlayHead());
+    finishBlock (buffer); // smooth preset changes
     midi.clear();
 }
 

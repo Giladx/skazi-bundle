@@ -54,6 +54,7 @@ void SubichProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         midi.addEvent (juce::MidiMessage::controllerEvent (1, 1, juce::jlimit (0, 127, (int) std::round (screenMod.load() * 127.0f))), 0);
     keyboard.processNextMidiBuffer (midi, 0, buffer.getNumSamples(), true);
     engine.render (buffer, midi, settings(), getPlayHead());
+    finishBlock (buffer); // smooth preset changes
     midi.clear();
 }
 

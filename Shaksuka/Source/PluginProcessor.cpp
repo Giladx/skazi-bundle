@@ -98,6 +98,7 @@ void ShaksukaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
                            : 0.0f;
 
     engine.process (buffer, p, getPlayHead());
+    fader.process (buffer, getSampleRate());
 }
 
 juce::AudioProcessorEditor* ShaksukaProcessor::createEditor()
@@ -137,7 +138,8 @@ void ShaksukaProcessor::loadPreset (int index)
     if (list.empty())
         return;
     index = ((index % (int) list.size()) + (int) list.size()) % (int) list.size();
-    applyValues (list[(size_t) index].values);
+    const auto values = list[(size_t) index].values;
+    fader.change ([this, values] { applyValues (values); });
     currentPreset = index;
     presetLabel = list[(size_t) index].category + juce::String::fromUTF8 (" \xc2\xb7 ") + list[(size_t) index].name;
 }
@@ -145,7 +147,7 @@ void ShaksukaProcessor::loadPreset (int index)
 void ShaksukaProcessor::randomizeAll()
 {
     auto p = presets::makeRandom (juce::Random::getSystemRandom());
-    applyValues (p.values);
+    fader.change ([this, values = p.values] { applyValues (values); });
     presetLabel = juce::String::fromUTF8 ("RANDOM \xc2\xb7 SEED ") + juce::String ((int) p.values["seed"]).paddedLeft ('0', 4);
 }
 

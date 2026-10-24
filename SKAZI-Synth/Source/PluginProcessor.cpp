@@ -276,19 +276,25 @@ void AcidanceProcessor::setCurrentProgram (int index)
 {
     index = juce::jlimit (0, Presets::count() - 1, index);
     currentProgram = index;
-    Presets::apply (index, *this);
     currentPresetName = Presets::name (index);
     currentPresetFolder = Presets::category (index);
-    ++programChanges;
-    updateHostDisplay (ChangeDetails().withProgramChanged (true));
+    fader.change ([this, index] // fade out, switch, fade in: no clicks between presets
+    {
+        Presets::apply (index, *this);
+        ++programChanges;
+        updateHostDisplay (ChangeDetails().withProgramChanged (true));
+    });
 }
 
 void AcidanceProcessor::randomizeSound()
 {
-    const auto style = Presets::randomSound (*this);
-    currentPresetName = "Random " + style + " #" + juce::String (juce::Random::getSystemRandom().nextInt ({ 1000, 10000 }));
-    currentPresetFolder = "Random";
-    ++programChanges;
+    fader.change ([this]
+    {
+        const auto style = Presets::randomSound (*this);
+        currentPresetName = "Random " + style + " #" + juce::String (juce::Random::getSystemRandom().nextInt ({ 1000, 10000 }));
+        currentPresetFolder = "Random";
+        ++programChanges;
+    });
 }
 
 bool AcidanceProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -781,6 +787,7 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         w = (w + 1) % kScopeSize;
     }
     scopeWrite.store (w, std::memory_order_release);
+    fader.process (buffer, getSampleRate());
 
     if (playing && ! hostRunning)
         internalPos += numSamples * inc16;

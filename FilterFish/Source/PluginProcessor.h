@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "../../Common/PresetFader.h"
 #include <juce_dsp/juce_dsp.h>
 #include "Parameters.h"
 #include "DSP/FilterEngine.h"
@@ -41,6 +42,7 @@ public:
     const juce::String& getRandomName() const noexcept { return randomName; }
 
     juce::AudioProcessorValueTreeState apvts;
+    skazi::PresetFader fader; // fades around preset changes
 
     // Read by the editor for the live displays.
     std::atomic<float> uiLfoPhase { 0.0f }, uiLfoValue { 0.0f }, uiModCutoff { 1000.0f };

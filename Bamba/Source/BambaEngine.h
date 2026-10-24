@@ -32,7 +32,6 @@ class Engine
 public:
     void prepare (double sampleRate);
     void render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi, const Settings& s, juce::AudioPlayHead* playHead);
-    void setFreeRun (bool f) { freeRun = f; } // standalone: keep looping in SYNC mode without a host transport
 
     // Read by the editor
     std::atomic<float> uiProgress { -1.0f }, uiOut { 0.0f };
@@ -43,13 +42,15 @@ private:
     void sample (const Settings& s, float& l, float& r);
 
     double sr = 44100.0, ppq = 0, bpm = 120.0;
-    bool freeRun = false;
+
     // event
-    bool active = false;
+    bool active = false, releasing = false;
+    int heldNote = -1;
+    float fade = 1.0f;
     double t = 0, len = 1;
     int type = Uplifter;
     float noteSemis = 0;
-    juce::int64 lastCycle = -1;
+
     // random-FX overrides
     float rPitchFrom = 0, rPitchTo = 0, rSweep = 0, rRoll = 0;
     // generators

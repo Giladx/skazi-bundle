@@ -13,6 +13,7 @@ Every plugin uses the vendor name **SKAZI**, so DAWs list them together.
 | `Bamba` | BAMBA | Riser & FX maker (uplifters, impacts, rolls, lasers...) |
 | `Tahini` | TAHINI | Space delay + reverb with duck and freeze |
 | `Zhug` | ZHUG | Saturator + widener, 4x oversampled, multiband |
+| `Bully` | BULLY | Wavetable synth: 3 osc with dual warp, 2 filters, 10 LFOs, chaos, mod matrix, FX rack, arp, analog character (drift, saturation, boost, spread), 462 presets |
 
 `Common` holds the shared metal skin, knobs, preset bar and A/B code used by SUBICH, BAMBA, TAHINI and ZHUG.
 

@@ -21,7 +21,7 @@ const std::vector<skazi::ParamDef>& paramDefs()
     static const std::vector<P> defs = {
         { "type", "Type", P::Choice, 0, 9, 0, "", 1, 1,
           { "UPLIFTER", "DOWNLIFTER", "NOISE SWEEP", "IMPACT", "SNARE ROLL", "REVERSE CRASH", "LASER", "SIREN", "SUB DROP", "RANDOM FX" } },
-        { "trigger", "Trigger", P::Choice, 0, 1, 0, "", 1, 1, { "SYNC", "MIDI" } },
+        { "trigger", "Trigger", P::Choice, 0, 1, 1, "", 1, 1, { "FULL BARS", "HOLD NOTE" } },
         { "bars", "Length", P::Choice, 0, 4, 3, "", 1, 1, { "1 BAR", "2 BARS", "4 BARS", "8 BARS", "16 BARS" } },
         { "curve", "Curve", P::Float, 0, 100, 60, "%", 0.1f },
         { "offset", "Offset (bars)", P::Int, 0, 15, 0 },
@@ -86,8 +86,8 @@ void Engine::prepare (double sampleRate)
     dlPos = 0;
     reverb.setSampleRate (sr);
     reverb.reset();
-    active = false;
-    lastCycle = -1;
+    active = releasing = false;
+    heldNote = -1;
 }
 
 void Engine::start (int note, const Settings& s, juce::int64 seed)
@@ -231,42 +231,33 @@ void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi
     const auto ht = skazi::hostTime (playHead);
     bpm = ht.bpm;
     if (ht.playing) ppq = ht.ppq;
-    const bool running = ht.playing || freeRun;
     const double barSamples = ht.beatsPerBar * 60.0 / bpm * sr;
-    const double beatsPerSample = bpm / 60.0 / sr;
+    const float fadeStep = (float) (1.0 / (0.04 * sr)); // 40 ms release when the note ends
 
     out.clear();
     float* L = out.getWritePointer (0);
     float* R = out.getWritePointer (out.getNumChannels() > 1 ? 1 : 0);
     auto it = midi.cbegin();
 
+    // Only notes play BAMBA (piano roll, keyboard). MIDI: lasts while the note is held.
+    // SYNC: each note plays one full pass of the BARS length.
     for (int i = 0; i < n; ++i)
     {
         for (; it != midi.cend() && (*it).samplePosition <= i; ++it)
         {
             const auto m = (*it).getMessage();
-            if (s.trigger == Midi && m.isNoteOn())
+            if (m.isNoteOn())
             {
                 start (m.getNoteNumber(), s, (juce::int64) rng.nextInt());
                 len = s.bars * barSamples;
+                heldNote = m.getNoteNumber();
+                releasing = false;
+                fade = 1.0f;
             }
-        }
-
-        if (s.trigger == Sync)
-        {
-            if (running)
+            else if ((m.isNoteOff() && m.getNoteNumber() == heldNote) || m.isAllNotesOff() || m.isAllSoundOff())
             {
-                const double pos = ppq / ht.beatsPerBar - s.offset;
-                const auto cycle = (juce::int64) std::floor (pos / s.bars);
-                len = s.bars * barSamples;
-                if (cycle != lastCycle) { start (60, s, cycle * 7919 + 17); lastCycle = cycle; }
-                t = frac (pos / s.bars) * len;
-                ppq += beatsPerSample;
-            }
-            else
-            {
-                active = false;
-                lastCycle = -1;
+                heldNote = -1;
+                if (active && s.trigger == Midi) releasing = true;
             }
         }
 
@@ -274,11 +265,15 @@ void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi
         if (active)
         {
             sample (s, l, r);
-            if (s.trigger == Midi)
+            if (releasing)
             {
-                t += 1.0;
-                if (t >= len) active = false;
+                fade -= fadeStep;
+                if (fade <= 0.0f) { fade = 0.0f; active = releasing = false; }
             }
+            l *= fade;
+            r *= fade;
+            t += 1.0;
+            if (t >= len) { active = releasing = false; }
         }
         L[i] = l;
         if (R != L) R[i] = r;

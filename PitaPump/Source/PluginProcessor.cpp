@@ -114,6 +114,7 @@ void PitaPumpProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
             sc = &scBuf;
     }
     engine.process (main, sc, noteOns, p, getPlayHead());
+    fader.process (buffer, getSampleRate());
 }
 
 juce::AudioProcessorEditor* PitaPumpProcessor::createEditor()
@@ -178,14 +179,15 @@ void PitaPumpProcessor::loadPreset (int index)
 {
     const auto& list = presets::all();
     index = ((index % (int) list.size()) + (int) list.size()) % (int) list.size();
-    applyValues (list[(size_t) index].values);
+    const auto values = list[(size_t) index].values;
+    fader.change ([this, values] { applyValues (values); });
     currentPreset = index;
     presetLabel = list[(size_t) index].category + juce::String::fromUTF8 (" \xc2\xb7 ") + list[(size_t) index].name;
 }
 
 void PitaPumpProcessor::randomizeAll()
 {
-    applyValues (presets::makeRandom (juce::Random::getSystemRandom()).values);
+    fader.change ([this, values = presets::makeRandom (juce::Random::getSystemRandom()).values] { applyValues (values); });
     presetLabel = juce::String::fromUTF8 ("RANDOM \xc2\xb7 ") + juce::String (juce::Random::getSystemRandom().nextInt ({ 100, 1000 }));
 }
 
