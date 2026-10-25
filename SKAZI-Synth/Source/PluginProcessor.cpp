@@ -322,6 +322,8 @@ namespace
         AcidanceProcessor q;
         q.applyStateXml (state);
         q.setParam ("volume", vol);
+        // at most 2x for the test: close enough for loudness, and a press stays quick on the UI thread
+        if (q.apvts.getRawParameterValue ("oversample")->load() > 1.5f) q.setParam ("oversample", 1.f);
         const bool seq = q.apvts.getRawParameterValue ("seq_on")->load() > 0.5f;
         const bool arp = q.apvts.getRawParameterValue ("arp_on")->load() > 0.5f;
         const bool poly = q.apvts.getRawParameterValue ("mode")->load() < 0.5f;
@@ -330,7 +332,7 @@ namespace
         q.setPlayConfigDetails (0, 2, sampleRate, block);
         q.prepareToPlay (sampleRate, block);
 
-        const int total = (int) (sampleRate * 2.5), offAt = (int) (sampleRate * 2.0);
+        const int total = (int) (sampleRate * 1.8), offAt = (int) (sampleRate * 1.4);
         juce::AudioBuffer<float> buf (2, block);
         Probe r;
         double sum = 0.0;
@@ -379,7 +381,7 @@ void AcidanceProcessor::randomizeSound()
             if (pr.ok && pr.rms > silent) break;
         }
         float vol = (float) (probeVol * target / std::max (pr.rms, silent));
-        if (pr.peak > 0.f) vol = std::min (vol, probeVol * 0.95f / pr.peak);   // peaks stay under full scale
+        if (pr.peak > 0.f) vol = std::min (vol, probeVol * 0.9f / pr.peak);   // peaks stay under the limiter, with margin
         setParam ("volume", juce::jlimit (0.05f, 1.6f, vol));
         currentPresetName = "Random " + style + " #" + juce::String (juce::Random::getSystemRandom().nextInt ({ 1000, 10000 }));
         currentPresetFolder = "Random";

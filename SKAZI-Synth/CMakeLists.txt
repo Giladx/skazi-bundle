@@ -40,9 +40,11 @@ juce_add_plugin(SKAZI
 target_sources(SKAZI PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
-    Source/Presets.cpp)
+    Source/Presets.cpp
+    Source/StandaloneApp.cpp)
 
 target_compile_definitions(SKAZI PUBLIC
+    JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1   # Source/StandaloneApp.cpp: MIDI inputs open by themselves
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0

@@ -99,15 +99,18 @@ int main (int argc, char** argv)
                           "comp_on", "fxf_on", "fxf_type", "wid_on", "eq_on" }) };
     };
     int changed[5] {};
-    std::vector<double> levels;
+    std::vector<double> levels, pressMs;
     int silent = 0, clipping = 0, broken = 0, arps = 0, seqs = 0;
     float worstPeak = 0.f;
     std::map<int, int> distUse;
     auto last = prints();
     for (int i = 0; i < presses; ++i)
     {
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
         p.randomizeSound();
         p.fader.flush();   // no message loop here: apply now
+        const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+        pressMs.push_back (ms);
         auto now = prints();
         for (int k = 0; k < 5; ++k) if (now[(size_t) k] != last[(size_t) k]) ++changed[k];
         last = now;
@@ -126,6 +129,9 @@ int main (int argc, char** argv)
         expect (changed[k] >= presses * 95 / 100, juce::String ("RANDOM changes the ") + sections[k] + " on every press",
                 juce::String (changed[k]) + " of " + juce::String (presses));
     std::sort (levels.begin(), levels.end());
+    std::sort (pressMs.begin(), pressMs.end());
+    expect (pressMs.back() < 800.0, "RANDOM: a press never blocks the UI for long",
+            "median " + juce::String (pressMs[pressMs.size() / 2], 0) + " ms, worst " + juce::String (pressMs.back(), 0) + " ms");
     expect (silent == 0, "RANDOM: no silent sounds (all above -40 dBFS RMS)", juce::String (silent) + " quiet");
     expect (clipping == 0 && broken == 0, "RANDOM: nothing clips or breaks",
             juce::String (clipping) + " hot, " + juce::String (broken) + " NaN, loudest single peak " + juce::String (worstPeak, 3));

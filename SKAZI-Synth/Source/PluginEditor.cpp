@@ -2318,6 +2318,19 @@ void AcidanceEditor::resized()
         view->setTransform (juce::AffineTransform::scale (scale));
 }
 
+// The editor already draws through its own OpenGL context. On Windows, JUCE 8 would also give the
+// host window a Direct2D renderer; mixing the two crashed Cubase on a hybrid Intel / NVIDIA machine
+// (inside Direct3D's WARP fallback). The window's own painting goes back to the plain software
+// renderer, so the editor never touches Direct3D.
+void AcidanceEditor::parentHierarchyChanged()
+{
+   #if JUCE_WINDOWS
+    if (auto* peer = getPeer())
+        if (peer->getAvailableRenderingEngines().size() > 1 && peer->getCurrentRenderingEngine() != 0)
+            peer->setCurrentRenderingEngine (0);
+   #endif
+}
+
 void AcidanceEditor::showPresetBrowser()
 {
     if (view != nullptr) view->openBrowser();

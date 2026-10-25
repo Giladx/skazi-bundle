@@ -51,6 +51,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void showPresetBrowser();
+    void parentHierarchyChanged() override;
 
     static constexpr int baseWidth = 1340, baseHeight = 1000;
 
