@@ -13,7 +13,8 @@ constexpr int kOsc = 3, kEnv = 4, kLfo = 10, kChaos = 2, kMacro = 4, kSlots = 16
 
 enum Warp { WNone, WSync, WBendP, WBendM, WPwm, WAsym, WMirror, WQuant, WFm, WRing, NumWarps };
 enum NoiseType { NWhite, NPink, NBrown, NCrackle, NVinyl, NDigital };
-enum FilterType { FLp12, FLp24, FHp12, FHp24, FBp12, FNotch, FPeak, FCombP, FCombM, FFormant, FPhaser, FRing, FDirty, NumFilterTypes };
+// New types go at the end, so saved projects and presets keep pointing at the same filter
+enum FilterType { FLp12, FLp24, FHp12, FHp24, FBp12, FNotch, FPeak, FCombP, FCombM, FFormant, FPhaser, FRing, FDirty, FSharp24, NumFilterTypes };
 enum LfoShape { LSine, LTri, LSawUp, LSawDown, LSquare, LPulse, LSH, LSmooth, LStairs, LHump, NumLfoShapes };
 enum LfoMode { LFree, LTrig, LEnv };
 enum VoiceMode { VPoly, VMono, VLegato };
@@ -127,7 +128,7 @@ inline const std::vector<skazi::ParamDef>& paramDefs()
 
         const juce::StringArray warps { "NONE", "SYNC", "BEND +", "BEND -", "PWM", "ASYM", "MIRROR", "QUANTIZE", "FM", "RING" };
         const juce::StringArray filters { "MG LOW 12", "MG LOW 24", "HIGH 12", "HIGH 24", "BAND 12", "NOTCH", "PEAK",
-                                          "COMB +", "COMB -", "FORMANT", "PHASER", "RING MOD", "DIRTY LOW" };
+                                          "COMB +", "COMB -", "FORMANT", "PHASER", "RING MOD", "DIRTY LOW", "SHARP 24" };
         const juce::StringArray lfoShapes { "SINE", "TRIANGLE", "SAW UP", "SAW DOWN", "SQUARE", "PULSE", "S&H", "SMOOTH RND", "STAIRS", "HUMP" };
         const auto rates = skazi::noteLengthNames();
 

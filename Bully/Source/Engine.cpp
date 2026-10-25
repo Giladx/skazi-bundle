@@ -374,6 +374,7 @@ void Engine::setupFilter (FilterSetup& fs, int f, const float* v, const float* m
         const float fc = juce::jlimit (20.0f, nyq, cut * std::exp2 (spread));
         fs.g[c] = std::tan (pi * fc / (float) sr);
         fs.ladG[c] = 1.0f - std::exp (-twoPi * juce::jmin (fc, 0.3f * (float) sr) / (float) sr);
+        fs.sharpG[c] = fs.g[c] / (1.0f + fs.g[c]);
         switch (fs.type)
         {
             case FCombP: case FCombM:
@@ -407,6 +408,11 @@ void Engine::setupFilter (FilterSetup& fs, int f, const float* v, const float* m
         }
     }
     fs.fbk = fs.res * 0.97f;
+
+    // SHARP 24: self-oscillation starts at k = 4 at every cutoff, i.e. at ~95% RESONANCE.
+    // The ladder loses 1/(1+k) of its passband to resonance; give most of it back so the bass stays.
+    fs.sharpK = 4.2f * fs.res;
+    fs.sharpComp = std::pow (1.0f + fs.sharpK, 0.75f);
 }
 
 float Engine::runFilter (const FilterSetup& fs, FilterChannel& ch, int c, float x)
@@ -475,6 +481,27 @@ float Engine::runFilter (const FilterSetup& fs, FilterChannel& ch, int c, float 
             if (ch.ringPh >= 1.0) ch.ringPh -= 1.0;
             y = x * std::sin (twoPi * (float) ch.ringPh);
             break;
+        case FSharp24: // zero-delay-feedback 4-pole ladder: cutoff where the knob says, strong, even resonance
+        {
+            // Each stage is a trapezoidal one-pole, y = G x + (1 - G) s. The feedback node is solved
+            // within the sample (no unit delay), so the peak stays on the cutoff and the resonance
+            // behaves the same across the whole range; tanh at the node keeps self-oscillation in check.
+            auto& s = ch.lad;
+            const float G = fs.sharpG[c], h = 1.0f - G, k = fs.sharpK;
+            const float S = ((G * s[0] + s[1]) * G + s[2]) * G * h + s[3] * h; // the four states seen at the output
+            const float G4 = G * G * G * G;
+            const float u = ftanh ((x - k * S) / (1.0f + k * G4));
+            float v = u;
+            for (auto& st : s)
+            {
+                const float d = (v - st) * G;
+                const float yy = d + st;
+                st = yy + d;
+                v = yy;
+            }
+            y = v * fs.sharpComp;
+            break;
+        }
         case FDirty: // overdriven ladder, every stage clipping
         {
             auto& s = ch.lad;

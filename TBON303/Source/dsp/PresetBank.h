@@ -278,6 +278,20 @@ inline const std::vector<PresetTemplate>& presetTemplates()
             .lin ("post_drive", 0.6f, 0.2f).expo ("dist_tone", 4500, 0.7f).lin ("gen_density", 0.85f, 0.1f)
             .pick ("gen_scale", { 0, 1, 7 }).pick ("root", roots).lin ("rev_mix", 0.08f, 0.06f).lin ("fat", 0.3f, 0.2f));
 
+        // Hardcore / hard acid: drive into the filter, resonance at or past self-oscillation,
+        // huge fast sweeps, hard accents, then heavy distortion after the filter.
+        v.push_back (PresetTemplate ("Hard Acid",
+            { "Hardcore", "Gabber", "Rave", "Terror", "Frenchcore", "Mental", "Nuclear", "Psycho" },
+            { "Acid", "Squelch", "Scream", "Blast", "Fury", "Machine", "Siren", "Meltdown" })
+            .pick ("wave", { 0, 0, 1 }).expo ("cutoff", 500, 0.9f).lin ("reso", 0.93f, 0.07f)
+            .lin ("envmod", 0.82f, 0.15f).expo ("decay", 0.22f, 0.6f).lin ("accent", 0.9f, 0.1f)
+            .expo ("acc_decay", 0.15f, 0.5f).expo ("sweep", 1.6f, 0.6f).lin ("flt_track", 0.25f, 0.2f)
+            .pick ("pre_type", { 1, 5, 6, 9, 11 }).lin ("pre_drive", 0.55f, 0.2f)
+            .pick ("post_type", { 6, 5, 13, 1, 11 }).lin ("post_drive", 0.7f, 0.2f).expo ("dist_tone", 5500, 0.6f)
+            .lin ("fat", 0.4f, 0.15f).lin ("gen_density", 0.9f, 0.08f).lin ("gen_accent", 0.45f, 0.1f)
+            .lin ("gen_slide", 0.25f, 0.1f).pick ("gen_scale", { 1, 3, 7, 0 }).pick ("root", roots)
+            .pick ("seq_rate", { 1, 1, 0 }).lin ("swing", 0.02f, 0.02f));
+
         v.push_back (PresetTemplate ("Deep Acid",
             { "Midnight", "Deep", "Submerged", "Velvet", "Hazy", "Slow", "Dark", "Hypnotic" },
             { "Waters", "Current", "Fog", "Drift", "Dream", "Tide", "Cave", "Mood" })

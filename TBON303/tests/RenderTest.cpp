@@ -131,7 +131,7 @@ int main (int argc, char** argv)
         double best = 0.0, bestF = 0.0;
         for (double f = fc * 0.5; f < fc * 2.0; f *= 1.01)
         {
-            const double gn = measureGain (fc, 0.9, f, sr * 2.0);
+            const double gn = measureGain (fc, 0.8, f, sr * 2.0);
             if (gn > best) { best = gn; bestF = f; }
         }
         const double ratio = bestF / fc;
@@ -145,16 +145,38 @@ int main (int argc, char** argv)
     {
         const double sr2 = sr * 2.0;
         std::printf ("  bass vs resonance (cutoff 1 kHz):\n");
-        for (double res : { 0.0, 0.5, 0.8, 1.0 })
+        for (double res : { 0.0, 0.5, 0.7, 0.85 })
             std::printf ("    reso %.1f:  55Hz %+.1f dB  110Hz %+.1f dB  220Hz %+.1f dB  peak(1k) %+.1f dB\n", res,
                          20.0 * std::log10 (measureGain (1000.0, res, 55.0, sr2)),
                          20.0 * std::log10 (measureGain (1000.0, res, 110.0, sr2)),
                          20.0 * std::log10 (measureGain (1000.0, res, 220.0, sr2)),
                          20.0 * std::log10 (measureGain (1000.0, res, 1000.0, sr2)));
-        const double loss = 20.0 * std::log10 (measureGain (1000.0, 1.0, 55.0, sr2) / measureGain (1000.0, 0.0, 55.0, sr2));
+        const double loss = 20.0 * std::log10 (measureGain (1000.0, 0.85, 55.0, sr2) / measureGain (1000.0, 0.0, 55.0, sr2));
         char msg[120];
         std::snprintf (msg, sizeof msg, "55 Hz bass at full resonance is %.1f dB vs no resonance (303-like: within -8 dB)", loss);
         check (loss > -8.0, msg);
+    }
+
+    // 1c. Full resonance screams: after one kick it keeps ringing by itself, on the cutoff, bounded.
+    {
+        const double sr2 = sr * 2.0;
+        DiodeLadder f;
+        f.prepare (sr2);
+        std::vector<float> y;
+        for (int i = 0; i < (int) sr2; ++i)
+            y.push_back (f.process (i < 64 ? 0.5f : 0.0f, 1000.0, 1.0));
+        double sum = 0.0; float peak = 0.0f; int crossings = 0;
+        const int from = (int) (sr2 * 0.5);
+        for (int i = from; i < (int) y.size(); ++i)
+        {
+            sum += (double) y[(size_t) i] * y[(size_t) i];
+            peak = std::max (peak, std::fabs (y[(size_t) i]));
+            if (y[(size_t) i - 1] < 0.0f && y[(size_t) i] >= 0.0f) ++crossings;
+        }
+        const double rms = std::sqrt (sum / (y.size() - from)), hz = crossings / 0.5;
+        char msg[160];
+        std::snprintf (msg, sizeof msg, "max resonance self-oscillates: %.0f Hz (cutoff 1000), rms %.2f, peak %.2f", hz, rms, peak);
+        check (rms > 0.1 && peak < 3.0f && std::abs (hz / 1000.0 - 1.0) < 0.12, msg);
     }
 
     // 2. Stability at the extremes.

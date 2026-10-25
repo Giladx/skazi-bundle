@@ -59,6 +59,30 @@ namespace
         return r;
     }
 
+    // strongest frequency between lo and hi over x[from, to): the power at each frequency is
+    // averaged over 8 slices (Welch), so a noise-driven measurement doesn't jump around
+    double peakHz (const std::vector<float>& x, int from, int to, double lo, double hi, double sr)
+    {
+        const int slices = 8, len = (to - from) / slices;
+        double best = 0, bestHz = lo;
+        for (double f = lo; f <= hi; f *= 1.005)
+        {
+            double power = 0;
+            for (int s = 0; s < slices; ++s)
+            {
+                double re = 0, im = 0;
+                for (int i = from + s * len; i < from + (s + 1) * len; ++i)
+                {
+                    const double ph = juce::MathConstants<double>::twoPi * f * i / sr;
+                    re += x[(size_t) i] * std::cos (ph); im += x[(size_t) i] * std::sin (ph);
+                }
+                power += re * re + im * im;
+            }
+            if (power > best) { best = power; bestHz = f; }
+        }
+        return bestHz;
+    }
+
     // rough pitch by counting upward zero crossings
     double pitchOf (const std::vector<float>& x, int from, int to, double sr)
     {
@@ -128,7 +152,27 @@ int main (int argc, char** argv)
             const auto r = render (v, { 48, 55, 60 }, 0.5, 0.7);
             if (! r.finite || r.peak > 1.0f || r.rms < 0.002) if (++bad <= 4) std::printf ("  filter %d rms %.4f peak %.2f\n", f, r.rms, r.peak);
         }
-        expect (bad == 0, "13 filter types sound at high resonance", juce::String (bad) + " bad");
+        expect (bad == 0, juce::String (NumFilterTypes) + " filter types sound at high resonance", juce::String (bad) + " bad");
+    }
+
+    // SHARP 24: white noise in, high resonance; the ringing peak must sit on the CUTOFF knob
+    {
+        juce::String detail;
+        bool ok = true;
+        for (float cut : { 300.0f, 1500.0f, 6000.0f })
+        {
+            auto v = defaults;
+            for (auto id : { "oaon", "obon", "ocon" }) v[(size_t) pid (id)] = 0;
+            v[(size_t) pid ("non")] = 1; v[(size_t) pid ("nlvl")] = 60; v[(size_t) pid ("nf1")] = 1;
+            v[(size_t) pid ("ntype")] = 0; v[(size_t) pid ("ntone")] = 100; // flat white noise, so the spectrum does not tilt the peak
+            v[(size_t) pid ("f1type")] = (float) FSharp24; v[(size_t) pid ("f1cut")] = cut; v[(size_t) pid ("f1res")] = 85;
+            v[(size_t) pid ("f1key")] = 0; v[(size_t) pid ("f1drv")] = 0;
+            const auto r = render (v, { 60 }, 3.0, 3.0, true);
+            const double hz = peakHz (r.left, 24000, 144000, cut * 0.6, cut * 1.6, 48000.0);
+            ok = ok && r.finite && r.peak <= 1.0f && std::abs (hz / cut - 1.0) < 0.06;
+            detail << juce::String (juce::roundToInt (cut)) << "->" << juce::String (juce::roundToInt (hz)) << " Hz  ";
+        }
+        expect (ok, "SHARP 24 resonance peak on the cutoff", detail);
     }
 
     // the psy recipe: ENV 2 on pitch gives a click that settles back to the note

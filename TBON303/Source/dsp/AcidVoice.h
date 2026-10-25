@@ -133,8 +133,8 @@ public:
         accentCap += (accIn - accentCap) * (1.0 - std::exp (-1.0 / (accTau * sr)));
 
         const double targetLog = std::log2 (std::max (20.0f, p.cutoffHz))
-                               + p.envMod * 4.5 * filterEnv
-                               + accentCap * 3.5
+                               + p.envMod * 6.0 * filterEnv   // up to 6 octaves of sweep
+                               + accentCap * 4.5
                                + p.filterTrack * (pitch - 48.0) / 12.0;
 
         // Slides also smooth the cutoff between the two notes; otherwise only de-zip.

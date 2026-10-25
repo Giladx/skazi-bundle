@@ -56,7 +56,10 @@ public:
     {
         const double fc = clampCutoff (cutoffHz / peakRatio, sr);
         const double g = std::tan (kPi * fc / sr);
-        const double k = kCritical * 1.02 * resonance;
+        // Resonance curve: gentle at first, strong in the middle, at the edge of self-oscillation
+        // around 87%, and past it at the top: the last part of the knob is the hard-acid scream.
+        // The saturating feedback (tanh below) keeps the scream musical instead of blowing up.
+        const double k = kCritical * 1.2 * std::pow (std::clamp (resonance, 0.0, 1.0), 1.3);
         const double c = coupling;
 
         // Tridiagonal M = I - g A. sub[i] couples to y[i-1], sup[i] to y[i+1].

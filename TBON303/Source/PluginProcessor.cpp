@@ -70,7 +70,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Skazi303Processor::createLay
     pct ("fat", "Fat (Tube)", 0.15f);
 
     // Diode filter + 303 envelope
-    flt ("cutoff", "Cutoff", skewed (30.0f, 9000.0f, 600.0f), 420.0f, "Hz");
+    flt ("cutoff", "Cutoff", skewed (20.0f, 14000.0f, 600.0f), 420.0f, "Hz");
     pct ("reso", "Resonance", 0.75f);
     pct ("envmod", "Env Mod", 0.62f);
     flt ("decay", "Decay", skewed (0.1f, 2.5f, 0.5f), 0.45f, "s");
