@@ -56,6 +56,7 @@ build Zhug        Zhug       "ZHUG"           FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
 build Bully       Bully      "BULLY"          FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
 build Kickass     Kickass    "KICKASS"        FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
 build Salat       Salat      "SALAT"          FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
+build TBON303     Skazi303   "SKAZI 303"      FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
 
 cp "$ROOT/mac/Uninstall SKAZI Bundle.command" "$STAGE/Applications/SKAZI/"
 chmod +x "$STAGE/Applications/SKAZI/Uninstall SKAZI Bundle.command"

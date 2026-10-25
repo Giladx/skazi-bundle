@@ -15,6 +15,7 @@ Every plugin uses the vendor name **SKAZI**, so DAWs list them together.
 | `Zhug` | ZHUG | Saturator + widener, 4x oversampled, multiband |
 | `Bully` | BULLY | Wavetable synth: 3 osc with dual warp, 2 filters, 10 LFOs, chaos, mod matrix, FX rack, arp, analog character (drift, saturation, boost, spread), 462 presets |
 | `Kickass` | KICKASS | Kick drum synth: two-stage pitch (snap + sweep), hold/decay, 3-band EQ, sample layer with a browser for your own Splice kicks, key track, 50 presets |
+| `TBON303` | SKAZI 303 (TBON 303) | Acid bass line synth: 303-style diode ladder filter with accent and slide, sub oscillator, 14 drive types, circuit mods, chorus/delay/reverb/widener, 16-step sequencer with pattern generator, 512 presets |
 | `Salat` | SALAT | Glitch multi-FX: tempo-synced chopper (stutter, reverse, gate, tape stop, hold), drive, crush, resonant filter with synced LFO, ring mod, flanger/chorus, ping-pong delay, reverb, MAKE A SALAT randomizer, 104 presets |
 
 `Common` holds the shared metal skin, knobs, preset bar and A/B code used by SUBICH, BAMBA, TAHINI, ZHUG and SALAT.

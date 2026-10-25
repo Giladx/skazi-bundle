@@ -1,0 +1,219 @@
+#pragma once
+
+// The monophonic 303 voice: oscillator -> pre drive -> diode ladder -> filter 2
+// -> post drive, plus a clean sub added after the distortion. Accent and slide are
+// wired into the envelopes the way the hardware does it, not as plain velocity/glide.
+
+#include "Distortion.h"
+#include "Filters.h"
+#include "Oscillator.h"
+#include <algorithm>
+#include <cmath>
+
+namespace s303
+{
+enum class Filter2Type { Off = 0, Ladder24, Formant };
+
+struct VoiceParams
+{
+    float wave = 0.0f, tuneSemis = 0.0f, fineCents = 0.0f, drift = 0.3f;
+    float subLevel = 0.0f;
+    int subWave = 0, subOctaves = 1;
+
+    float cutoffHz = 500.0f, resonance = 0.6f, envMod = 0.5f, decaySec = 0.6f;
+    float accent = 0.6f, slideSec = 0.06f;
+    float ampDecaySec = 2.5f; // VCA decay while the gate is held
+
+    // Circuit mods (in the spirit of the classic 303 hardware mods)
+    float filterTrack = 0.0f;     // 0..1: cutoff follows the note pitch
+    float accentDecaySec = 0.2f;  // filter decay on accented notes (stock 303: fixed ~0.2 s)
+    float softAttackSec = 0.003f; // VCA attack on normal notes; accents always snap
+    float sweepSpeed = 1.0f;      // accent sweep charge speed multiplier
+    float pulseWidth = 0.0f;      // 0..1, square wave duty
+    float noise = 0.0f;           // analog hiss into the filter
+
+    Filter2Type f2Type = Filter2Type::Off;
+    float f2CutoffHz = 2000.0f, f2Resonance = 0.3f, f2Vowel = 0.0f, f2Mix = 1.0f;
+
+    DistType preType = DistType::Tube;
+    float preDrive = 0.0f;
+    DistType postType = DistType::Tube;
+    float postDrive = 0.0f, postToneHz = 8000.0f, postMix = 1.0f;
+};
+
+class AcidVoice
+{
+public:
+    void prepare (double sampleRate)
+    {
+        sr = sampleRate;
+        osc.prepare (sr);
+        drift.prepare (sr, 0x1234567u);
+        diode.prepare (sr);
+        moog.prepare (sr);
+        formant.prepare (sr);
+        preDist.prepare (sr);
+        postDist.prepare (sr);
+        reset();
+    }
+
+    void reset()
+    {
+        osc.reset();
+        diode.reset();
+        moog.reset();
+        formant.reset();
+        preDist.reset();
+        postDist.reset();
+        gate = false;
+        amp = 0.0;
+        attacking = false;
+        filterEnv = 0.0;
+        accentCap = 0.0;
+        accentGain = 1.0;
+        logCutoff = std::log2 (500.0);
+        toneState = 0.0;
+        sliding = false;
+    }
+
+    /**
+        slide = true means "this note is reached by sliding from the previous one":
+        pitch glides, and neither envelope retriggers (the gate stays high).
+    */
+    void noteOn (int midiNote, bool accented, bool slide)
+    {
+        targetPitch = midiNote;
+        accentOn = accented;
+
+        if (slide && gate)
+        {
+            sliding = true;
+            return;
+        }
+
+        sliding = false;
+        pitch = midiNote;
+        gate = true;
+        attacking = true;
+        filterEnv = 1.0;
+        noteCents = drift.randomCents (lastDriftAmount);
+    }
+
+    void noteOff() { gate = false; }
+    bool isActive() const { return gate || amp > 1.0e-5; }
+
+    float render (const VoiceParams& p)
+    {
+        lastDriftAmount = p.drift;
+
+        // --- pitch: constant-time RC glide, like the 303's slide capacitor
+        const double slideTau = std::max (0.005, (double) p.slideSec);
+        pitch += (targetPitch - pitch) * (1.0 - std::exp (-1.0 / (slideTau * sr)));
+        if (sliding && std::abs (targetPitch - pitch) < 0.001)
+            sliding = false;
+
+        const double cents = p.fineCents + noteCents + drift.next (p.drift);
+        const double note = pitch + p.tuneSemis + cents / 100.0;
+        const double freq = 440.0 * std::exp2 ((note - 69.0) / 12.0);
+
+        float mainOsc = 0.0f, subOsc = 0.0f;
+        osc.process (freq, p.wave, p.pulseWidth, p.subWave, p.subOctaves, mainOsc, subOsc);
+        if (p.noise > 0.0001f)
+            mainOsc += hiss.next() * p.noise * 0.12f;
+
+        // --- filter envelope (MEG). Accents use their own (normally very short) decay.
+        const double decay = accentOn ? std::max (0.03, (double) p.accentDecaySec)
+                                      : std::max (0.05, (double) p.decaySec);
+        filterEnv *= std::exp (-4.0 / (decay * sr));
+
+        // Accent sweep: accented envelope charges a cap through a resonance-dependent
+        // RC. Back-to-back accents don't let it discharge, so the cutoff climbs.
+        const double accIn = accentOn ? filterEnv * p.accent : 0.0;
+        const double accTau = (0.012 + 0.11 * p.resonance) / std::max (0.1, (double) p.sweepSpeed);
+        accentCap += (accIn - accentCap) * (1.0 - std::exp (-1.0 / (accTau * sr)));
+
+        const double targetLog = std::log2 (std::max (20.0f, p.cutoffHz))
+                               + p.envMod * 4.5 * filterEnv
+                               + accentCap * 3.5
+                               + p.filterTrack * (pitch - 48.0) / 12.0;
+
+        // Slides also smooth the cutoff between the two notes; otherwise only de-zip.
+        const double cutTau = sliding ? slideTau * 0.6 : 0.0015;
+        logCutoff += (targetLog - logCutoff) * (1.0 - std::exp (-1.0 / (cutTau * sr)));
+        const double cutoff = std::exp2 (logCutoff);
+
+        // --- audio path
+        float x = preDist.process (mainOsc, p.preType, p.preDrive);
+        x = diode.process (x, cutoff, p.resonance);
+
+        if (p.f2Type == Filter2Type::Ladder24)
+        {
+            const float f2 = moog.process (x, p.f2CutoffHz, p.f2Resonance);
+            x += (f2 - x) * p.f2Mix;
+        }
+        else if (p.f2Type == Filter2Type::Formant)
+        {
+            const double shift = std::clamp (p.f2CutoffHz / 1000.0, 0.4, 2.5);
+            const float f2 = formant.process (x, p.f2Vowel, shift, p.f2Resonance);
+            x += (f2 - x) * p.f2Mix;
+        }
+
+        if (p.postDrive > 0.0001f)
+        {
+            const float driven = postDist.process (x, p.postType, p.postDrive);
+            const double tc = 1.0 - std::exp (-kTwoPi * std::min ((double) p.postToneHz, sr * 0.45) / sr);
+            toneState += (driven - toneState) * tc;
+            x += ((float) toneState - x) * p.postMix;
+        }
+
+        // --- VCA. Fast attack, slow decay while the gate is held, quick release.
+        if (gate)
+        {
+            if (attacking)
+            {
+                const double attack = accentOn ? 0.001 : std::max (0.0005, (double) p.softAttackSec);
+                amp += 1.0 / (attack * sr);
+                if (amp >= 1.0)
+                {
+                    amp = 1.0;
+                    attacking = false;
+                }
+            }
+            else
+            {
+                amp *= std::exp (-1.0 / (std::max (0.05, (double) p.ampDecaySec) * sr));
+            }
+        }
+        else
+        {
+            attacking = false;
+            amp *= std::exp (-1.0 / (0.004 * sr));
+        }
+
+        const double targetAccentGain = accentOn ? 1.0 + 0.9 * p.accent : 1.0;
+        accentGain += (targetAccentGain - accentGain) * (1.0 - std::exp (-1.0 / (0.003 * sr)));
+
+        // The sub joins after the drive so the low end stays clean and mono-solid.
+        const double out = (x * accentGain + subOsc * p.subLevel * 0.8) * amp;
+        return (float) (out * 0.5);
+    }
+
+    double getFilterEnv() const { return filterEnv; }
+
+private:
+    double sr = 44100.0;
+    AcidOscillator osc;
+    Drift drift;
+    Noise hiss;
+    DiodeLadder diode;
+    MoogLadder moog;
+    FormantFilter formant;
+    Distortion preDist, postDist;
+
+    bool gate = false, attacking = false, accentOn = false, sliding = false;
+    double pitch = 48.0, targetPitch = 48.0, noteCents = 0.0;
+    double amp = 0.0, filterEnv = 0.0, accentCap = 0.0, accentGain = 1.0;
+    double logCutoff = 9.0, toneState = 0.0;
+    float lastDriftAmount = 0.3f;
+};
+} // namespace s303
