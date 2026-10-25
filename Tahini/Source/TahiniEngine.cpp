@@ -1,5 +1,6 @@
 #include "TahiniEngine.h"
 #include <cmath>
+#include <complex>
 
 namespace tahini
 {
@@ -9,21 +10,88 @@ namespace
     // FDN line lengths in ms (mutually prime-ish so the echoes don't pile up into a metallic ring)
     constexpr double kFdnMs[8] = { 29.7, 37.1, 41.1, 43.7, 53.0, 59.3, 67.1, 73.9 };
     constexpr int kDiffSamples[4] = { 142, 107, 379, 277 };
+
+    double pairGain (double hz, double loHz, double qLo, double hiHz, double qHi)
+    {
+        const double kLo = juce::jlimit (0.0, 1.0, 1.0 / qLo - 1.0);
+        const std::complex<double> a (0.0, hz / loHz), b (0.0, hz / hiHz);
+        return std::abs ((a * a + kLo * a) / (a * a + a / qLo + 1.0) / (b * b + b / qHi + 1.0));
+    }
+
+    // Loudest point of the low cut + high cut pair, so the feedback can be held under 1 at the resonance
+    double filterPeak (double loHz, double qLo, double hiHz, double qHi)
+    {
+        double peak = 1.0;
+        for (int i = 0; i <= 96; ++i)
+            peak = std::max (peak, pairGain (20.0 * std::pow (1000.0, i / 96.0), loHz, qLo, hiHz, qHi));
+        return peak;
+    }
+}
+
+// RESO 0..1 -> filter Q (0.5 = no peak, 4 = +12 dB)
+double resoQ (float reso) { return 0.5 + 3.5 * std::pow ((double) juce::jlimit (0.0f, 1.0f, reso), 1.5); }
+
+float echoLowCut (const Settings& s) { return s.loCut; }
+
+float echoHighCut (const Settings& s)
+{
+    float hi = s.hiCut;
+    if (s.mode == Tape) hi = juce::jmin (hi, 5000.0f);
+    if (s.mode == Bbd)  hi = juce::jmin (hi, 3800.0f);
+    return hi * (1.0f - 0.6f * s.age); // old tape is darker
+}
+
+double echoFilterGain (const Settings& s, double hz)
+{
+    return pairGain (hz, echoLowCut (s), resoQ (s.loRes), echoHighCut (s), resoQ (s.hiRes));
+}
+
+float Engine::EchoFx::process (float x, const EchoCoeffs& c)
+{
+    float lp, bp, hp;
+    lo.tick (x, c.gLo, c.r2Lo, lp, bp, hp);
+    x = hp + c.kLo * bp;  // with no reso this is the gentle 6 dB low cut of 1.0
+    hi.tick (x, c.gHi, c.r2Hi, lp, bp, hp);
+    x = lp;
+    if (c.bbd) { bbdLp += (x - bbdLp) * c.aBbd; x = bbdLp; }
+
+    // every type is scaled so quiet signals pass at (or under) unity: echoes grind, the loop never runs away
+    switch (c.type)
+    {
+        case DriveTube:
+        {
+            constexpr float bias = 0.35f; // lopsided like a tube: even harmonics
+            const float y = (std::tanh (x * c.drive + bias) - std::tanh (bias)) / c.drive;
+            const float o = y - dcIn + c.dcA * dcOut;
+            dcIn = y; dcOut = o;
+            return o;
+        }
+        case DriveFuzz:
+        {
+            const float u = x * c.drive;
+            return u / std::sqrt (std::sqrt (1.0f + u * u * u * u)) / c.drive;
+        }
+        case DriveCrush:
+            if (++holdCount >= c.hold) { holdCount = 0; held = std::trunc (x / c.step) * c.step; } // toward zero: tails die out
+            return std::tanh (held);
+        default:
+            return std::tanh (x * c.drive) / c.drive;
+    }
 }
 
 const std::vector<skazi::ParamDef>& paramDefs()
 {
     using P = skazi::ParamDef;
     static const std::vector<P> defs = {
-        { "dmode", "Delay Mode", P::Choice, 0, 2, 2, "", 1, 1, { "PING-PONG", "STEREO", "TAPE" } },
-        { "pitch", "Echo Pitch", P::Float, -12, 12, 0, "st", 1 },
+        { "dmode", "Delay Type", P::Choice, 0, 6, 2, "", 1, 1, { "PING-PONG", "STEREO", "TAPE", "DIGITAL", "BBD", "MULTI-TAP", "DUAL" } },
+        { "pitch", "Echo Pitch", P::Float, -24, 24, 0, "st", 0.01f },
         { "reverse", "Reverse Echoes", P::Float, 0, 100, 0, "%", 0.1f },
         { "tstop", "Tape Stops", P::Float, 0, 100, 0, "%", 0.1f },
         { "age", "Tape Age", P::Float, 0, 100, 0, "%", 0.1f },
         { "dtime", "Delay Time", P::Choice, 0, 15, 12, "", 1, 1, skazi::noteLengthNames() },
         { "fb", "Feedback", P::Float, 0, 95, 55, "%", 0.1f },
-        { "locut", "Low Cut", P::Float, 20, 2000, 250, "Hz", 1, 0.4f },
-        { "hicut", "High Cut", P::Float, 1000, 20000, 6500, "Hz", 1, 0.4f },
+        { "locut", "Low Cut", P::Float, 20, 4000, 250, "Hz", 1, 0.4f },
+        { "hicut", "High Cut", P::Float, 200, 20000, 6500, "Hz", 1, 0.4f },
         { "wow", "Wow", P::Float, 0, 100, 25, "%", 0.1f },
         { "ddrive", "Delay Drive", P::Float, 0, 100, 10, "%", 0.1f },
         { "freeze", "Freeze", P::Bool, 0, 1, 0 },
@@ -38,6 +106,12 @@ const std::vector<skazi::ParamDef>& paramDefs()
         { "rmix", "Reverb Mix", P::Float, 0, 100, 30, "%", 0.1f },
         { "dry", "Dry Signal", P::Bool, 0, 1, 1 },
         { "gain", "Output", P::Float, -24, 12, 0, "dB", 0.1f },
+        // 1.1: appended so old projects and presets load unchanged
+        { "hpres", "Low Cut Reso", P::Float, 0, 100, 0, "%", 0.1f },
+        { "lpres", "High Cut Reso", P::Float, 0, 100, 0, "%", 0.1f },
+        { "dist", "Drive Type", P::Choice, 0, 3, 0, "", 1, 1, { "TAPE", "TUBE", "FUZZ", "CRUSH" } },
+        { "pmix", "Pitch Blend", P::Float, 0, 100, 100, "%", 0.1f },
+        { "psnap", "Pitch Snap", P::Bool, 0, 1, 1 },
     };
     return defs;
 }
@@ -53,6 +127,8 @@ Settings Settings::fromValues (const std::function<float (const char*)>& v)
     s.delayMix = v ("dmix") * 0.01f; s.reverbMix = v ("rmix") * 0.01f; s.dry = v ("dry") > 0.5f;
     s.gain = juce::Decibels::decibelsToGain (v ("gain"));
     s.pitch = v ("pitch"); s.reverse = v ("reverse") * 0.01f; s.tapeStop = v ("tstop") * 0.01f; s.age = v ("age") * 0.01f;
+    s.loRes = v ("hpres") * 0.01f; s.hiRes = v ("lpres") * 0.01f; s.driveType = (int) v ("dist");
+    s.pitchMix = v ("pmix") * 0.01f; s.pitchSnap = v ("psnap") > 0.5f;
     return s;
 }
 
@@ -70,10 +146,9 @@ void Engine::prepare (double sampleRate, int)
     }
     for (int i = 0; i < N; ++i) fdn[i].init ((int) ((kFdnMs[i] * 1.6 + 12.0) * 0.001 * sr));
     std::fill (std::begin (fdnLp), std::end (fdnLp), 0.0f);
-    delaySmooth = 0; env = 0;
-    std::fill (std::begin (hp), std::end (hp), 0.0f);
-    std::fill (std::begin (lpA), std::end (lpA), 0.0f);
-    std::fill (std::begin (lpB), std::end (lpB), 0.0f);
+    delaySmooth = delaySmoothR = 0; env = 0; pitchSmooth = 0; bbdPh = 0; loSmooth = hiSmooth = 0;
+    for (auto* fx : { echoFx, tapFx, loopFx })
+        for (int c = 0; c < 2; ++c) fx[c].reset();
 }
 
 void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s, juce::AudioPlayHead* playHead)
@@ -87,19 +162,60 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s, juce:
     const auto ht = skazi::hostTime (playHead);
     uiBpm.store (ht.bpm);
     const double target = juce::jlimit (1.0, sr * 4.0, skazi::noteBeats (s.time) * 60.0 / ht.bpm * sr);
+    const bool dual = s.mode == Dual, multi = s.mode == MultiTap;
+    const double targetR = dual ? juce::jmax (1.0, target * 0.75) : target; // DUAL: right side 3/4 of the left (1/4 -> 3/16)
     if (delaySmooth <= 0.0) delaySmooth = target;
-    const double smooth = s.mode == Tape ? 0.00005 : 0.0015;
-    const bool tape = s.mode == Tape;
+    if (delaySmoothR <= 0.0) delaySmoothR = targetR;
+    const bool tape = s.mode == Tape, bbd = s.mode == Bbd;
+    const double smooth = tape ? 0.00005 : bbd ? 0.0003 : 0.0015;
     const double wowDepth = ((tape ? juce::jmax (0.2f, s.wow) : s.wow) + s.age * 0.8f) * 0.003 * sr;
-    const float aLo = (float) (1.0 - std::exp (-twoPi * s.loCut / sr));
-    const float hiCut = (tape ? juce::jmin (s.hiCut, 5000.0f) : s.hiCut) * (1.0f - 0.6f * s.age); // old tape is darker
-    const float aHi = (float) (1.0 - std::exp (-twoPi * hiCut / sr));
-    const double pitchRatio = std::exp2 (s.pitch / 12.0);
+    const double bbdDepth = bbd ? 0.0008 * sr : 0.0; // bucket-brigade chorus wobble, opposite on each side
+    const bool invertR = s.mode == Stereo || bbd || dual;
+
+    // echo filters + drive
+    const float nyq = (float) (0.45 * sr);
+    const float loTarget = juce::jmin (echoLowCut (s), nyq), hiTarget = juce::jmin (echoHighCut (s), nyq);
+    if (loSmooth <= 0.0f) { loSmooth = loTarget; hiSmooth = hiTarget; }
+    const float aCut = (float) (1.0 - std::exp (-1.0 / (0.02 * sr)));
+    const double qLo = resoQ (s.loRes), qHi = resoQ (s.hiRes);
+    EchoCoeffs ec {};
+    ec.r2Lo = (float) (1.0 / qLo); ec.kLo = (float) juce::jlimit (0.0, 1.0, 1.0 / qLo - 1.0); ec.r2Hi = (float) (1.0 / qHi);
+    ec.type = juce::jlimit (0, 3, s.driveType);
+    switch (ec.type)
+    {
+        case DriveTube:  ec.drive = 1.0f + s.drive * 8.0f; break;
+        case DriveFuzz:  ec.drive = 1.0f + s.drive * 30.0f; break;
+        case DriveCrush: ec.drive = 1.0f; break;
+        default:         ec.drive = 1.0f + s.drive * 3.0f + (tape ? 1.0f : 0.0f) + (bbd ? 0.5f : 0.0f); break;
+    }
+    ec.step = (float) std::exp2 (-(11.0 - 9.0 * s.drive));            // 12 bits down to 3
+    ec.hold = 1 + (int) (s.drive * s.drive * 15.0 * sr / 48000.0);    // sample-rate reduction
+    ec.dcA = (float) std::exp (-twoPi * 15.0 / sr);
+    ec.bbd = bbd; ec.aBbd = (float) (1.0 - std::exp (-twoPi * 7000.0 / sr));
+    // You hear every echo through the full resonance, but the copy that goes back round the loop gets a softer Q:
+    // FEEDBACK keeps its length and feedback x peak stays under 1, so the echoes always fade.
+    float fb = juce::jmin (0.95f, s.feedback);
+    double qLoLoop = qLo, qHiLoop = qHi, peak = 1.0;
+    const double loHz = juce::jmax (20.0f, loTarget), hiHz = juce::jmax (20.0f, hiTarget);
+    for (int k = 0; k < 12; ++k)
+    {
+        peak = filterPeak (loHz, qLoLoop, hiHz, qHiLoop);
+        if (fb * peak <= 0.97) break;
+        qLoLoop = 0.5 + (qLoLoop - 0.5) * 0.7;
+        qHiLoop = 0.5 + (qHiLoop - 0.5) * 0.7;
+    }
+    fb = juce::jmin (fb, (float) (0.97 / peak));
+    EchoCoeffs loopEc = ec;
+    loopEc.r2Lo = (float) (1.0 / qLoLoop); loopEc.kLo = (float) juce::jlimit (0.0, 1.0, 1.0 / qLoLoop - 1.0); loopEc.r2Hi = (float) (1.0 / qHiLoop);
+    // while the two match, the loop copy just follows the heard one, so it starts warm (no click) when RESO goes up
+    const bool softLoop = qLoLoop != qLo || qHiLoop != qHi;
+    if (! softLoop) { loopFx[0] = echoFx[0]; loopFx[1] = echoFx[1]; }
+
+    const double pitchTarget = s.pitchSnap ? std::round (s.pitch) : s.pitch;
+    const double aPitch = 1.0 - std::exp (-1.0 / (0.05 * sr));
     const double beatSamples = 60.0 / ht.bpm * sr;
     const float stopIn = (float) (1.0 - std::exp (-1.0 / (0.25 * sr))), stopOut = (float) (1.0 - std::exp (-1.0 / (0.15 * sr)));
     const double maxRead = dl[0].buf.size() - 8.0;
-    const float drv = 1.0f + s.drive * 3.0f + (tape ? 1.0f : 0.0f);
-    const float fb = juce::jmin (0.95f, s.feedback);
 
     const float att = (float) (1.0 - std::exp (-1.0 / (0.001 * sr)));
     const float rel = (float) (1.0 - std::exp (-1.0 / (s.duckRelMs * 0.001 * sr)));
@@ -115,14 +231,6 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s, juce:
     }
     const double preSamples = juce::jlimit (1.0, sr * 0.29, s.predelayMs * 0.001 * sr);
 
-    auto feedbackPath = [&] (float x, int c)
-    {
-        hp[c] += (x - hp[c]) * aLo;              // low cut
-        x -= hp[c];
-        lpA[c] += (x - lpA[c]) * aHi;            // high cut, 2 poles
-        lpB[c] += (lpA[c] - lpB[c]) * aHi;
-        return std::tanh (lpB[c] * drv) / drv;   // drive never adds gain, so feedback stays stable
-    };
 
     const float decayMeter = (float) std::exp (-(double) n / (0.2 * sr));
     for (int i = 0; i < n; ++i)
@@ -136,11 +244,22 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s, juce:
 
         // delay
         delaySmooth += (target - delaySmooth) * smooth;
+        delaySmoothR += (targetR - delaySmoothR) * smooth;
+        loSmooth += (loTarget - loSmooth) * aCut;
+        hiSmooth += (hiTarget - hiSmooth) * aCut;
+        ec.gLo = (float) std::tan (juce::MathConstants<double>::pi * loSmooth / sr);
+        ec.gHi = (float) std::tan (juce::MathConstants<double>::pi * hiSmooth / sr);
+        pitchSmooth += (pitchTarget - pitchSmooth) * aPitch;
+        if (std::abs (pitchTarget - pitchSmooth) < 1.0e-3) pitchSmooth = pitchTarget;
+        const double pitchRatio = std::exp2 (pitchSmooth / 12.0);
+        bbdPh += 0.7 / sr;
+        if (bbdPh > 1.0) bbdPh -= 1.0;
         wowPh += 0.6 / sr; flutterPh += 7.0 / sr;
         if (wowPh > 1.0) wowPh -= 1.0;
         if (flutterPh > 1.0) flutterPh -= 1.0;
-        const double mod = wowDepth * (std::sin (twoPi * wowPh) + 0.2 * std::sin (twoPi * flutterPh));
-        const double dBase = juce::jmax (2.0, delaySmooth);
+        const double mod = wowDepth * (std::sin (twoPi * wowPh) + 0.2 * std::sin (twoPi * flutterPh))
+                         + bbdDepth * (1.0 + std::sin (twoPi * bbdPh));
+        const double dBase = juce::jmax (2.0, delaySmooth), dBaseR = juce::jmax (2.0, delaySmoothR);
 
         // TAPE STOP: now and then (once per beat it rolls the dice) the tape drags to a halt and spins back up
         if (++stopCount >= beatSamples)
@@ -156,9 +275,23 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s, juce:
         else          stopEnv += (0.0f - stopEnv) * stopOut;
         const double lag = stopEnv * 0.25 * sr;
 
-        float eL = dl[0].read (juce::jlimit (1.0, maxRead, dBase + mod + lag));
-        float eR = dl[1].read (juce::jlimit (1.0, maxRead, dBase + (s.mode == Stereo ? -mod : mod) + lag));
-        const float fbL = eL, fbR = eR;
+        const double modR = invertR ? -mod : mod;
+        // every echo goes through the filters + drive before you hear it, and again on each trip round the loop
+        const float rawL = dl[0].read (juce::jlimit (1.0, maxRead, dBase + mod + lag));
+        const float rawR = dl[1].read (juce::jlimit (1.0, maxRead, dBaseR + modR + lag));
+        const float pL = echoFx[0].process (rawL, ec), pR = echoFx[1].process (rawR, ec);
+        loopEc.gLo = ec.gLo; loopEc.gHi = ec.gHi;
+        const float lL = softLoop ? loopFx[0].process (rawL, loopEc) : pL; // what goes back round the loop
+        const float lR = softLoop ? loopFx[1].process (rawR, loopEc) : pR;
+        float eL = pL, eR = pR;
+
+        // MULTI-TAP: extra heads at 1/4, 1/2 and 3/4 of the echo, spread left / right / left
+        if (multi)
+        {
+            auto tap = [&] (int c, double frac) { return dl[c].read (juce::jlimit (1.0, maxRead, dBase * frac + (c ? modR : mod) + lag)); };
+            eL += tapFx[0].process (0.3f * tap (0, 0.25) + 0.55f * tap (0, 0.75), ec);
+            eR += tapFx[1].process (0.45f * tap (1, 0.5), ec);
+        }
 
         // REVERSE: a second head runs backwards through the last echo-length of tape
         if (s.reverse > 0.0f)
@@ -181,16 +314,22 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s, juce:
             eR = eR * dip + (rng.nextFloat() - 0.5f) * 0.006f * s.age;
         }
 
-        // PITCH: every trip round the tape is shifted again, so the echoes spiral up or down
+        // PITCH: every trip round the tape is shifted again, so the echoes spiral up or down.
+        // BLEND under 100% keeps the unshifted echo too: at +12 that stacks octaves (shimmer).
+        auto feedback = [&] (float x, int c)
+        {
+            const float shifted = shift[c].process (x, pitchRatio);
+            return (shifted * s.pitchMix + x * (1.0f - s.pitchMix)) * fb;
+        };
         if (s.mode == PingPong)
         {
-            dl[0].write (0.5f * (dryL + dryR) + shift[1].process (feedbackPath (fbR, 1), pitchRatio) * fb);
-            dl[1].write (shift[0].process (feedbackPath (fbL, 0), pitchRatio) * fb);
+            dl[0].write (0.5f * (dryL + dryR) + feedback (lR, 1));
+            dl[1].write (feedback (lL, 0));
         }
         else
         {
-            dl[0].write (dryL + shift[0].process (feedbackPath (fbL, 0), pitchRatio) * fb);
-            dl[1].write (dryR + shift[1].process (feedbackPath (fbR, 1), pitchRatio) * fb);
+            dl[0].write (dryL + feedback (lL, 0));
+            dl[1].write (dryR + feedback (lR, 1));
         }
 
         // reverb: pre-delay -> 4 diffusers -> 8-line FDN with Householder mixing
