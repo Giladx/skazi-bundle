@@ -53,7 +53,7 @@ namespace
         }
     }
 
-    // bars: 0 = 1 bar, 1 = 2, 2 = 4, 3 = 8, 4 = 16.  sfit: 0 ORIGINAL, 1 STRETCH, 2 VARISPEED.  salign: 0 START, 1 END ON DROP.
+    // bars: 0 = 1 bar, 1 = 2, 2 = 4, 3 = 8, 4 = 16, 5 = 24.  sfit: 0 ORIGINAL, 1 STRETCH, 2 VARISPEED.  salign: 0 START, 1 END ON DROP.
     // spliceKind / spliceLength are not parameters: they tell BAMBA which kind of Splice sample to pick
     // (RiserLibrary::Kind, -1 any; RiserLibrary::Length) when the preset loads.
     constexpr float kRise = 0, kDown = 1, kSweep = 2, kImpact = 3, kReverse = 4, lAny = 0, lShort = 1, lLong = 2;
@@ -74,6 +74,8 @@ namespace
             { "Half Bar Zip", { { "type", Uplifter }, { "bars", 0 }, { "curve", 95 }, { "noise", 50 }, { "tone", 70 }, { "pfrom", 0 }, { "pto", 24 }, { "reso", 45 }, { "reverb", 15 }, { "delay", 0 } } },
         });
         bank ("LONG RISES", {
+            { "24 Bar Odyssey", { { "type", Uplifter }, { "bars", 5 }, { "curve", 70 }, { "noise", 65 }, { "tone", 45 }, { "pfrom", -24 }, { "pto", 36 }, { "sweep", 95 }, { "reso", 40 }, { "phaser", 55 }, { "reverb", 65 }, { "width", 95 } } },
+            { "24 Bar Slow Tide", { { "type", Uplifter }, { "bars", 5 }, { "curve", 85 }, { "noise", 90 }, { "tone", 15 }, { "color", 55 }, { "sweep", 100 }, { "reso", 30 }, { "reverb", 75 } } },
             { "16 Bar Journey", { { "type", Uplifter }, { "bars", 4 }, { "curve", 65 }, { "noise", 60 }, { "tone", 40 }, { "pfrom", -24 }, { "pto", 24 }, { "sweep", 90 }, { "reso", 35 }, { "phaser", 50 }, { "reverb", 60 }, { "width", 90 } } },
             { "Endless Ascent", { { "type", Uplifter }, { "bars", 4 }, { "curve", 80 }, { "noise", 40 }, { "tone", 70 }, { "pfrom", -24 }, { "pto", 36 }, { "sweep", 70 }, { "reso", 45 }, { "roll", 30 } } },
             { "Slow Burn", { { "type", Uplifter }, { "bars", 3 }, { "curve", 85 }, { "noise", 75 }, { "tone", 25 }, { "pfrom", -12 }, { "pto", 12 }, { "sweep", 95 }, { "reso", 25 }, { "reverb", 70 } } },
@@ -82,6 +84,7 @@ namespace
             { "Breakdown Tide", { { "type", Uplifter }, { "bars", 4 }, { "curve", 50 }, { "noise", 85 }, { "tone", 15 }, { "color", 65 }, { "sweep", 80 }, { "phaser", 70 }, { "reverb", 80 } } },
         });
         bank ("QUANTIZED UPLIFTS", {
+            { "24 Bar Gate Build", { { "type", Uplifter }, { "bars", 5 }, { "rrate", 1 }, { "roll", 65 }, { "rdecay", 50 }, { "curve", 70 }, { "noise", 65 }, { "tone", 55 }, { "pfrom", -24 }, { "pto", 24 }, { "reverb", 55 }, { "delay", 30 } } },
             { "Gated Uplift 1-16", { { "type", Uplifter }, { "bars", 2 }, { "rrate", 5 }, { "roll", 80 }, { "rdecay", 55 }, { "noise", 75 }, { "tone", 45 }, { "pfrom", -12 }, { "pto", 24 }, { "sweep", 90 } } },
             { "Stutter Riser 1-32", { { "type", Uplifter }, { "bars", 1 }, { "rrate", 6 }, { "roll", 85 }, { "rdecay", 60 }, { "noise", 80 }, { "tone", 40 }, { "pto", 24 }, { "reso", 55 } } },
             { "Build Gate Rise", { { "type", Uplifter }, { "bars", 3 }, { "rrate", 1 }, { "roll", 70 }, { "rdecay", 45 }, { "noise", 65 }, { "tone", 55 }, { "pfrom", -24 }, { "pto", 24 }, { "reverb", 55 } } },
@@ -94,6 +97,7 @@ namespace
             { "Siren Gate 1-16", { { "type", Siren }, { "bars", 2 }, { "rrate", 5 }, { "roll", 70 }, { "rdecay", 55 }, { "tone", 90 }, { "noise", 10 }, { "pto", 24 }, { "delay", 45 } } },
         });
         bank ("SNARE ROLLS", {
+            { "24 Bar Snare Epic", { { "type", SnareRoll }, { "roll", 100 }, { "bars", 5 }, { "rrate", 1 }, { "rdecay", 70 }, { "noise", 85 }, { "tone", 45 }, { "pfrom", -12 }, { "pto", 12 }, { "sweep", 90 }, { "reverb", 50 } } },
             { "Snare Build 1-4 To 1-32", { { "type", SnareRoll }, { "roll", 100 }, { "bars", 3 }, { "rrate", 1 }, { "rdecay", 70 }, { "noise", 85 }, { "tone", 45 }, { "pfrom", 0 }, { "pto", 12 }, { "sweep", 80 }, { "reverb", 40 } } },
             { "Psy Snare 16ths", { { "type", SnareRoll }, { "roll", 100 }, { "bars", 2 }, { "rrate", 5 }, { "rdecay", 75 }, { "noise", 90 }, { "tone", 40 }, { "pfrom", -5 }, { "pto", 12 }, { "reverb", 35 }, { "delay", 20 } } },
             { "Techno 8ths Pressure", { { "type", SnareRoll }, { "roll", 100 }, { "bars", 2 }, { "rrate", 4 }, { "rdecay", 65 }, { "noise", 100 }, { "tone", 25 }, { "reso", 30 }, { "reverb", 45 } } },
@@ -141,6 +145,7 @@ namespace
             { "Sub Slide", { { "type", SubDrop }, { "bars", 1 }, { "pto", 36 }, { "curve", 60 }, { "reverb", 20 }, { "delay", 0 } } },
         });
         bank ("PSYTRANCE", {
+            { "Psy 24 Bar Breakdown Rise", { { "type", Uplifter }, { "bars", 5 }, { "curve", 75 }, { "noise", 60 }, { "tone", 60 }, { "pfrom", -24 }, { "pto", 36 }, { "sweep", 95 }, { "reso", 60 }, { "roll", 40 }, { "rrate", 5 }, { "phaser", 50 }, { "reverb", 55 }, { "delay", 45 } } },
             { "Psy 16 Bar Launch", { { "type", Uplifter }, { "bars", 4 }, { "curve", 72 }, { "noise", 60 }, { "tone", 60 }, { "pfrom", -24 }, { "pto", 36 }, { "sweep", 95 }, { "reso", 55 }, { "roll", 35 }, { "width", 90 }, { "phaser", 45 }, { "reverb", 55 }, { "delay", 45 } } },
             { "Goa Siren", { { "type", Siren }, { "bars", 2 }, { "tone", 90 }, { "noise", 10 }, { "pfrom", 0 }, { "pto", 24 }, { "reso", 60 }, { "delay", 55 } } },
             { "Full-On Snare Ramp", { { "type", SnareRoll }, { "roll", 100 }, { "bars", 3 }, { "noise", 85 }, { "tone", 45 }, { "pfrom", -7 }, { "pto", 12 }, { "sweep", 85 }, { "reso", 30 }, { "reverb", 45 } } },
@@ -168,6 +173,7 @@ namespace
             { "Garage Zap", { { "type", Laser }, { "bars", 0 }, { "tone", 90 }, { "noise", 5 }, { "delay", 40 }, { "reso", 50 } } },
         });
         bank ("SPLICE LAYER", {
+            { "Splice 24 Bar Riser", { { "type", Uplifter }, { "bars", 5 }, { "curve", 70 }, { "synth", 45 }, { "smix", 85 }, { "sfit", 1 }, { "sshape", 50 }, { "spliceKind", kRise }, { "spliceLength", lLong } } },
             { "Splice Riser Gated 1-16", { { "type", Uplifter }, { "bars", 2 }, { "rrate", 5 }, { "roll", 75 }, { "rdecay", 55 }, { "synth", 35 }, { "smix", 90 }, { "sfit", 1 }, { "sshape", 30 }, { "spliceKind", kRise }, { "spliceLength", lAny } } },
             { "Splice Snare Build", { { "type", SnareRoll }, { "roll", 100 }, { "bars", 3 }, { "rrate", 1 }, { "rdecay", 70 }, { "synth", 55 }, { "smix", 80 }, { "sfit", 1 }, { "sshape", 40 }, { "spliceKind", kRise }, { "spliceLength", lLong } } },
             { "Splice Dry Riser Wet Synth", { { "type", Uplifter }, { "bars", 3 }, { "reverb", 75 }, { "delay", 45 }, { "synth", 45 }, { "smix", 90 }, { "smpfx", 0 }, { "sfit", 1 }, { "sshape", 20 }, { "spliceKind", kRise }, { "spliceLength", lLong } } },

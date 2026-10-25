@@ -18,7 +18,7 @@ enum RollRate { RollFree, RollBuild, Roll2, Roll4, Roll8, Roll16, Roll32, Roll64
 double rollHitsPerBeat (int rate, float progress); // 0 for FREE
 
 const std::vector<skazi::ParamDef>& paramDefs();
-int barsFor (int barsChoice); // 1, 2, 4, 8, 16
+int barsFor (int barsChoice); // 1, 2, 4, 8, 16, 24
 
 struct Settings
 {

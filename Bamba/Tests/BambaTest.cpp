@@ -96,6 +96,12 @@ int main()
     Settings s = Settings::fromValues ([] (const char* id) { return skazi::defaultValues (paramDefs()).at (id); });
     s.bars = 1; // 2 s at 120 bpm
     expect (s.trigger == Midi, "default: plays while the note is held");
+    expect (barsFor (0) == 1 && barsFor (3) == 8 && barsFor (4) == 16 && barsFor (5) == 24, "lengths 1 .. 24 bars, 1.0 indexes unchanged");
+    {
+        auto t = s; t.trigger = Sync; t.bars = 24; t.reverb = 0; t.delay = 0; // 48 s at 120 bpm
+        const auto r = render (t, 50.0, { 0 });
+        expect (r.finite && r.env[7] > r.env[0] * 2.0f && r.env[7] > 0.01f, "24 BARS: one long rise", juce::String (r.env[0], 3) + " -> " + juce::String (r.env[7], 3));
+    }
 
     for (int type = 0; type < NumTypes; ++type)
     {

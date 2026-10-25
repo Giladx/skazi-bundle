@@ -22,7 +22,7 @@ const std::vector<skazi::ParamDef>& paramDefs()
         { "type", "Type", P::Choice, 0, 9, 0, "", 1, 1,
           { "UPLIFTER", "DOWNLIFTER", "NOISE SWEEP", "IMPACT", "SNARE ROLL", "REVERSE CRASH", "LASER", "SIREN", "SUB DROP", "RANDOM FX" } },
         { "trigger", "Trigger", P::Choice, 0, 1, 1, "", 1, 1, { "FULL BARS", "HOLD NOTE" } },
-        { "bars", "Length", P::Choice, 0, 4, 3, "", 1, 1, { "1 BAR", "2 BARS", "4 BARS", "8 BARS", "16 BARS" } },
+        { "bars", "Length", P::Choice, 0, 5, 3, "", 1, 1, { "1 BAR", "2 BARS", "4 BARS", "8 BARS", "16 BARS", "24 BARS" } }, // 24 added last so saved lengths keep their index
         { "curve", "Curve", P::Float, 0, 100, 60, "%", 0.1f },
         { "offset", "Offset (bars)", P::Int, 0, 15, 0 },
         { "noise", "Noise", P::Float, 0, 100, 70, "%", 0.1f },
@@ -55,7 +55,7 @@ const std::vector<skazi::ParamDef>& paramDefs()
     return defs;
 }
 
-int barsFor (int c) { static const int b[] = { 1, 2, 4, 8, 16 }; return b[juce::jlimit (0, 4, c)]; }
+int barsFor (int c) { static const int b[] = { 1, 2, 4, 8, 16, 24 }; return b[juce::jlimit (0, 5, c)]; }
 
 Settings Settings::fromValues (const std::function<float (const char*)>& v)
 {
