@@ -319,7 +319,7 @@ public:
         const float w1 = GlyphArrangement::getStringWidth (tf, title1);
         skin::engrave (g, title1, { 204, 8, (int) w1 + 4, 38 }, tf, Colour (0xff26282c), Justification::left);
         skin::engrave (g, title2, { 204 + (int) w1, 8, 200, 38 }, tf, skin::red, Justification::left);
-        skin::engrave (g, sub, { 205, 42, 300, 14 }, skin::font (10.5f), Colour (0xff3b3e43), Justification::left);
+        skin::engrave (g, sub, { 205, 42, 420, (int) subtitleSize + 4 }, skin::font (subtitleSize), Colour (0xff3b3e43), Justification::left);
 
         for (auto& p : panels)
         {
@@ -360,6 +360,8 @@ public:
     void mouseDown (const juce::MouseEvent&) override { proc.undo.beginNewTransaction(); }
 
 protected:
+    void setSubtitleSize (float size) { subtitleSize = size; repaint(); }
+
     virtual void layout() = 0;           // place components, add panels and labels
     virtual void tick() {}               // 30 times a second
     virtual void paintExtras (juce::Graphics&) {}
@@ -430,6 +432,7 @@ private:
     PresetBar presetBar;
     juce::Image faceplate, logo;
     juce::String title1, title2, sub, footer;
+    float subtitleSize = 10.5f; // the line under the title ("... BY ASHER SWISSA")
     std::vector<Panel> panels;
     std::vector<Label> labels;
     std::vector<std::unique_ptr<Knob>> knobs;

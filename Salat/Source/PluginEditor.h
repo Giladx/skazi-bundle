@@ -23,6 +23,16 @@ private:
     SalatProcessor& proc;
 };
 
+// How far the RISE has got: a filling bar with the current pitch and bar count
+class RiseView : public juce::Component
+{
+public:
+    explicit RiseView (SalatProcessor& p) : proc (p) {}
+    void paint (juce::Graphics& g) override;
+private:
+    SalatProcessor& proc;
+};
+
 // MAKE A SALAT
 class SalatButton : public juce::Button
 {
@@ -45,12 +55,15 @@ private:
     SalatProcessor& sp;
     ChopView chopView;
     FilterView filterView;
+    RiseView riseView;
     SalatButton salatBtn;
     juce::TextButton holdBtn { "HOLD STUTTER" };
     bool holdDown = false;
 
-    skazi::ChoiceRow *posRow, *stepRow, *repRow, *driveRow, *filterRow, *modRow;
-    skazi::ParamToggle *chopOn, *driveOn, *crushOn, *filterOn, *ringOn, *modOn, *delayOn, *reverbOn;
+    skazi::ChoiceRow *posRow, *stepRow, *repRow, *driveRow, *filterRow, *modRow, *riseLenRow;
+    skazi::ParamToggle *chopOn, *driveOn, *crushOn, *filterOn, *ringOn, *modOn, *delayOn, *reverbOn, *riseOn;
+    skazi::Knob* riseAmt;
+    juce::TextButton riseQuick[3] { juce::TextButton ("12"), juce::TextButton ("24"), juce::TextButton ("48") };
     skazi::Knob *chance, *wStut, *wRev, *wGate, *wTape, *drive, *bits, *down, *cutoff, *reso, *lfoDepth;
     skazi::Knob *ringFreq, *ringMix, *modRate, *modDepth, *modFb, *modMix, *dlyFb, *dlyTone, *dlyMix;
     skazi::Knob *revSize, *revDamp, *revMix, *inGain, *mix, *outGain;

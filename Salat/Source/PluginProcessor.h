@@ -23,6 +23,9 @@ public:
     // The big button: a new random salat, and the next four steps get chopped whatever CHANCE says
     void makeASalat() { randomizeAll(); engine.burst (4); }
 
+    // RISE belongs to the arrangement, not the sound: presets, RANDOM and MAKE A SALAT leave it alone
+    bool keepOnPresetChange (const juce::String& id) const override { return id.startsWith ("rise"); }
+
     salat::Settings settings() const { return salat::Settings::fromValues ([this] (const char* id) { return v (id); }); }
 
     salat::Engine engine;

@@ -61,6 +61,24 @@ namespace
 
     float noise (int i) { juce::Random r (i * 7919 + 13); return (r.nextFloat() * 2.0f - 1.0f) * 0.2f; }
 
+    // Strongest frequency between lo and hi Hz in [from, to) seconds (a DFT scan): a pitch shifter's
+    // read jumps would fool a zero-crossing count
+    double peakHz (const std::vector<float>& v, double from, double to, double lo, double hi)
+    {
+        double best = 0, bestHz = 0;
+        for (double f = lo; f <= hi; f += 0.5)
+        {
+            double re = 0, im = 0;
+            for (size_t i = (size_t) (from * sr); i < (size_t) (to * sr); ++i)
+            {
+                re += v[i] * std::cos (twoPi * f * (double) i / sr);
+                im += v[i] * std::sin (twoPi * f * (double) i / sr);
+            }
+            if (re * re + im * im > best) { best = re * re + im * im; bestHz = f; }
+        }
+        return bestHz;
+    }
+
     // kick on the beat, hats on the off-16ths, a saw bass: something with rhythm to chop
     float beat (int i)
     {
@@ -186,10 +204,47 @@ int main (int argc, char** argv)
         expect (ok && silent == 0, "200 random salats clean and audible", juce::String (silent) + " silent");
     }
 
+    // RISE: +12 st over 2 bars (4 s at 120 bpm), then holds; measured by zero crossings of a 220 Hz sine
+    {
+        auto s = everythingOff(); s.riseOn = true; s.riseLen = 0; s.riseSemis = 12;
+        const auto o = run (s, (int) sr * 6, [] (int i) { return 0.3f * (float) std::sin (twoPi * 220.0 * i / sr); });
+        const double mid = peakHz (o.L, 1.9, 2.1, 180, 520), top = peakHz (o.L, 4.5, 5.9, 180, 520);
+        expect (std::abs (mid / (220.0 * std::exp2 (0.5)) - 1.0) < 0.04 && std::abs (top / 440.0 - 1.0) < 0.02 && clean (o.L),
+                "rise: +6 st half way, +12 st at the top", juce::String (mid, 1) + " Hz / " + juce::String (top, 1) + " Hz");
+
+        // the widest range: +48 st = four octaves, 220 Hz -> 3520 Hz
+        auto s48 = s; s48.riseSemis = 48;
+        const auto o48 = run (s48, (int) sr * 6, [] (int i) { return 0.3f * (float) std::sin (twoPi * 220.0 * i / sr); });
+        const double top48 = peakHz (o48.L, 4.5, 5.9, 3300, 3700);
+        expect (std::abs (top48 / 3520.0 - 1.0) < 0.01 && clean (o48.L), "rise: +48 st reaches four octaves up", juce::String (top48, 1) + " Hz");
+    }
+
+    // RISE follows the bar grid: switched on half way through a bar, it waits for the next bar line
+    {
+        Engine e;
+        e.prepare (sr, kBlock);
+        juce::AudioBuffer<float> buf (2, kBlock);
+        auto s = everythingOff(); s.riseLen = 0; s.riseSemis = 12;
+        skazi::HostTime host;                                 // stopped: 120 bpm from beat 0, 4/4
+        const int beat = (int) (sr / 2);                       // samples per beat
+        float waitingFlag = 0, progressAtBeat5 = 0;
+        for (int pos = 0; pos < beat * 6; pos += kBlock)
+        {
+            s.riseOn = pos >= beat * 3 / 2;                   // switched on at beat 1.5 (past the first quarter)
+            buf.clear();
+            e.process (buf, s, host);
+            if (pos >= beat * 2 && pos < beat * 2 + kBlock) waitingFlag = e.uiRiseProgress.load();
+            if (pos >= beat * 5 && pos < beat * 5 + kBlock) progressAtBeat5 = e.uiRiseProgress.load();
+        }
+        // the rise counts from beat 4 (the next bar); at beat 5 it is 1 of 8 beats in
+        expect (waitingFlag < 0.0f && std::abs (progressAtBeat5 - 0.125f) < 0.01f, "rise waits for the bar line, then runs on the grid",
+                "beat 2: " + juce::String (waitingFlag, 3) + ", beat 5: " + juce::String (progressAtBeat5, 3));
+    }
+
     // CPU with every effect on
     {
         auto s = fromPreset (salat::presets()[0]);
-        s.crushOn = s.ringOn = s.modOn = s.delayOn = s.reverbOn = true; s.lfoDepth = 2; s.chance = 1;
+        s.crushOn = s.ringOn = s.modOn = s.delayOn = s.reverbOn = s.riseOn = true; s.lfoDepth = 2; s.chance = 1; s.riseSemis = 24;
         const int total = (int) sr * 20;
         const auto t0 = std::chrono::steady_clock::now();
         run (s, total, beat);
