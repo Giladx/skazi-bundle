@@ -10,8 +10,8 @@ Every plugin uses the vendor name **SKAZI**, so DAWs list them together.
 | `PitaPump` | PITA PUMP | Sidechain LFO tool |
 | `FilterFish` | The FilterFish | Filter FX |
 | `Subich` | SUBICH | Bass + sub bass synth: 2 osc, sub, 2 filters, 2 LFOs, wheels, 1000 presets |
-| `Bamba` | BAMBA | Riser & FX maker (uplifters, impacts, rolls, lasers...) |
-| `Tahini` | TAHINI | Space delay + reverb with duck and freeze |
+| `Bamba` | BAMBA | Riser & uplift maker: synth risers plus a Splice layer that finds your own riser/uplift samples (short/long, stretch to the bars), snare rolls and gated uplifts quantized 1/2 to 1/128 with an automatable RATE knob, mixer with FX sends, pitch up to +6 octaves with its own curve, 1 to 24 bars, 260 presets with impacts and FX in their own section |
+| `Tahini` | TAHINI | Space delay + reverb: 7 delay types (ping-pong, stereo, tape, digital, BBD, multi-tap, dual), resonant low/high cut and tape/tube/fuzz/crush drive inside the echo loop, pitch on the repeats (+-24 st, shimmer blend), reverse, tape stops, reverb with duck and freeze, 250 presets |
 | `Zhug` | ZHUG | Saturator + widener, 4x oversampled, multiband |
 | `Bully` | BULLY | Wavetable synth: 3 osc with dual warp, 2 filters, 10 LFOs, chaos, mod matrix, FX rack, arp, analog character (drift, saturation, boost, spread), SHARP 24 zero-delay-feedback ladder filter, 462 presets |
 | `Kickass` | KICKASS | Kick drum synth: two-stage pitch (snap + sweep), hold/decay, 3-band EQ, sample layer with a browser for your own Splice kicks, key track, 50 presets |

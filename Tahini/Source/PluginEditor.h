@@ -15,6 +15,16 @@ private:
     std::vector<float> history;
 };
 
+// Echo filter response: the first repeat bright, later repeats fainter as the filters pile up
+class FilterCurve : public juce::Component
+{
+public:
+    explicit FilterCurve (TahiniProcessor& p) : proc (p) {}
+    void paint (juce::Graphics& g) override;
+private:
+    TahiniProcessor& proc;
+};
+
 class TahiniEditor : public skazi::EditorBase
 {
 public:
@@ -27,10 +37,11 @@ protected:
 private:
     TahiniProcessor& tp;
     TahiniDisplay display;
-    skazi::ChoiceRow* modeRow;
+    FilterCurve curve;
+    skazi::ChoiceRow *modeRow, *distRow;
     juce::ComboBox* timeBox;
-    skazi::ParamToggle *freeze, *dry;
+    skazi::ParamToggle *freeze, *dry, *snap;
     skazi::Knob *fb, *locut, *hicut, *wow, *drive, *size, *decay, *predelay, *damp, *width, *duck, *duckrel, *dmix, *rmix, *gain;
-    skazi::Knob *pitch, *reverse, *tstop, *age;
+    skazi::Knob *pitch, *reverse, *tstop, *age, *hpres, *lpres, *pmix;
     skazi::Meter *outMeter, *duckMeter;
 };
