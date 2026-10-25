@@ -1215,6 +1215,7 @@ std::unique_ptr<juce::XmlElement> AcidanceProcessor::createStateXml()
     extra->setAttribute ("presetName", currentPresetName);
     extra->setAttribute ("presetFolder", currentPresetFolder);
     extra->setAttribute ("skin", skin.load());
+    extra->setAttribute ("skinVersion", 2);   // 2: BULLY skin exists (and is the default)
     extra->setAttribute ("uiScale", (double) uiScale.load());
     juce::String shapes;
     for (auto& l : lfoCustom)
@@ -1254,7 +1255,11 @@ void AcidanceProcessor::setStateInformation (const void* data, int sizeInBytes)
     if (xml == nullptr) return;
     if (auto* extra = xml->getChildByName ("ACIDANCE_DATA"))
     {
-        skin = juce::jlimit (0, 4, extra->getIntAttribute ("skin", 4));   // the skin only comes from the session, not presets
+        // the skin only comes from the session, not presets. Sessions from before the BULLY skin
+        // that still had the old default (Hyper) move to the new default look.
+        int s = juce::jlimit (0, 5, extra->getIntAttribute ("skin", 5));
+        if (extra->getIntAttribute ("skinVersion", 1) < 2 && s == 4) s = 5;
+        skin = s;
         uiScale = (float) juce::jlimit (0.5, 1.5, extra->getDoubleAttribute ("uiScale", 0.9));
     }
     applyStateXml (*xml);

@@ -281,7 +281,7 @@ int main (int argc, char** argv)
         proc.fader.flush(); // no message loop here: apply the preset now
         proc.currentStep = 4;
         proc.uiScale = 1.f;
-        proc.skin = argc > 4 ? juce::String (argv[4]).getIntValue() : 4;
+        proc.skin = argc > 4 ? juce::String (argv[4]).getIntValue() : 5;
         std::unique_ptr<AcidanceEditor> ed (dynamic_cast<AcidanceEditor*> (proc.createEditor()));
         std::function<void (juce::Component*, juce::Array<juce::TextButton*>&)> find;
         find = [&find] (juce::Component* c, juce::Array<juce::TextButton*>& out)
@@ -368,8 +368,8 @@ int main (int argc, char** argv)
         juce::FileOutputStream fos (f);
         juce::PNGImageFormat().writeImageToStream (img, fos);
     };
-    const char* skinNames[] = { "neon", "vintage", "chrome", "robot", "hyper" };
-    for (int skin : { 4, 3, 2, 1, 0 })
+    const char* skinNames[] = { "neon", "vintage", "chrome", "robot", "hyper", "bully" };
+    for (int skin : { 5, 4, 3, 2, 1, 0 })
     {
         proc.skin = skin;
         std::unique_ptr<AcidanceEditor> ed (dynamic_cast<AcidanceEditor*> (proc.createEditor()));

@@ -176,6 +176,25 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto r = getLocalBounds().toFloat();
+        if (Acid::skin == Acid::Bully)
+        {
+            // BULLY glass panel: dark violet glass, rainbow frame, neon dot + title
+            auto body = r.reduced (1.f);
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xe0140c2c), 0.f, body.getY(), juce::Colour (0xd40a0618), 0.f, body.getBottom(), false));
+            g.fillRoundedRectangle (body, 11.f);
+            g.setGradientFill (Acid::rainbow (body.getX(), body.getY(), body.getRight(), body.getBottom()));
+            g.drawRoundedRectangle (body.reduced (0.5f), 11.f, 1.4f);
+            g.setColour (juce::Colours::white.withAlpha (0.05f));
+            g.drawHorizontalLine ((int) body.getY() + 2, body.getX() + 10.f, body.getRight() - 10.f);
+            g.setColour (accent.withAlpha (0.4f));
+            g.fillEllipse (body.getX() + 9.f, 12.f, 13.f, 13.f);
+            g.setColour (accent);
+            g.fillEllipse (body.getX() + 12.f, 15.f, 7.f, 7.f);
+            g.setColour (Acid::text);
+            g.setFont (Acid::font (13.5f));
+            g.drawText (title.toUpperCase(), 30, 8, 420, 22, juce::Justification::centredLeft);
+            return;
+        }
         if (Acid::skin == Acid::Vintage)
         {
             // Black anodised front panel, engraved cream title, corner screws
@@ -1900,6 +1919,11 @@ public:
     void paint (juce::Graphics& g) override
     {
         const int skin = Acid::skin;
+        if (skin == Acid::Bully)
+        {
+            paintBully (g);
+            return;
+        }
         if (skin == Acid::Hyper)
         {
             paintHyper (g);
@@ -2008,6 +2032,71 @@ public:
 
         g.setColour (Acid::dim);
         g.setFont (Acid::font (10.f).withExtraKerningFactor (0.2f));
+        g.drawText ("PRESET", 360, 14, 400, 14, juce::Justification::centred);
+    }
+
+    // BULLY look: a blurred rainbow swirl under a dark veil with star dust, glass header, rainbow rule
+    void paintBully (juce::Graphics& g)
+    {
+        if (backdrop.getWidth() != getWidth() || backdrop.getHeight() != getHeight())
+        {
+            const int sw = 96, sh = 72;
+            juce::Image small (juce::Image::RGB, sw, sh, false);
+            for (int y = 0; y < sh; ++y)
+                for (int x = 0; x < sw; ++x)
+                {
+                    const float dx = (x - sw * 0.5f) / sw, dy = (y - sh * 0.45f) / sh;
+                    const float a = std::atan2 (dy, dx) / juce::MathConstants<float>::twoPi + 0.5f;
+                    const float swirl = std::fmod (a + std::sqrt (dx * dx + dy * dy) * 0.9f + 1.f, 1.f);
+                    small.setPixelAt (x, y, juce::Colour::fromHSV (std::fmod (0.83f + swirl, 1.f), 0.95f, 1.f, 1.f));
+                }
+            backdrop = juce::Image (juce::Image::RGB, getWidth(), getHeight(), false);
+            juce::Graphics bg (backdrop);
+            bg.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+            bg.drawImage (small, 0, 0, getWidth(), getHeight(), 0, 0, sw, sh);
+            bg.setColour (juce::Colour (0xff07040f).withAlpha (0.76f));
+            bg.fillAll();
+            juce::Random rnd (7);
+            for (int i = 0; i < 320; ++i)
+            {
+                bg.setColour (juce::Colours::white.withAlpha (0.05f + rnd.nextFloat() * 0.18f));
+                const float sz = 0.6f + rnd.nextFloat() * 1.4f;
+                bg.fillEllipse (rnd.nextFloat() * getWidth(), rnd.nextFloat() * getHeight(), sz, sz);
+            }
+            bg.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.08f), 0.f, 0.f, juce::Colours::white.withAlpha (0.02f), 0.f, 100.f, false));
+            bg.fillRect (0, 0, getWidth(), 100);
+            bg.setGradientFill (Acid::rainbow (0.f, 0.f, (float) getWidth(), 0.f));
+            bg.fillRect (0, 100, getWidth(), 2);
+        }
+        g.drawImageAt (backdrop, 0, 0);
+
+        // logo in a rainbow frame, then the rainbow SKAZI wordmark and byline
+        g.setColour (juce::Colours::black);
+        g.fillRoundedRectangle (16.f, 10.f, 112.f, 62.f, 7.f);
+        g.setGradientFill (Acid::rainbow (16.f, 10.f, 128.f, 72.f));
+        g.drawRoundedRectangle (16.5f, 10.5f, 111.f, 61.f, 7.f, 1.2f);
+        if (! drawBrandLogo (g, { 22.f, 13.f, 100.f, 56.f }))
+        {
+            g.setColour (juce::Colours::white);
+            g.setFont (Acid::font (30.f));
+            g.drawText ("SKAZI", 16, 10, 112, 62, juce::Justification::centred);
+        }
+        juce::GlyphArrangement ga;
+        ga.addLineOfText (juce::Font (juce::FontOptions ("Impact", 44.f, juce::Font::plain)).withExtraKerningFactor (0.08f), "SKAZI", 140.f, 52.f);
+        juce::Path word;
+        ga.createPath (word);
+        juce::DropShadow (juce::Colour (0xffff00c8).withAlpha (0.7f), 12, {}).drawForPath (g, word);
+        g.setGradientFill (Acid::rainbow (140.f, 0.f, 140.f + word.getBounds().getWidth(), 0.f));
+        g.fillPath (word);
+        juce::GlyphArrangement by;
+        by.addLineOfText (Acid::font (12.5f).withExtraKerningFactor (0.2f), "BY ASHER SWISSA", 141.f, 72.f);
+        juce::Path byP;
+        by.createPath (byP);
+        g.setGradientFill (Acid::rainbow (141.f, 0.f, 141.f + byP.getBounds().getWidth(), 0.f));
+        g.fillPath (byP);
+        g.setColour (Acid::dim);
+        g.setFont (Acid::font (9.f).withExtraKerningFactor (0.2f));
+        g.drawText ("PSY / ACID / VA SYNTH", 141, 78, 190, 14, juce::Justification::centredLeft);
         g.drawText ("PRESET", 360, 14, 400, 14, juce::Justification::centred);
     }
 
@@ -2219,8 +2308,8 @@ private:
         runButton.setColour (juce::TextButton::buttonOnColourId, Acid::accentFor (Acid::green));
         skinButton.setColour (juce::TextButton::buttonOnColourId, Acid::violet);
         browseButton.setColour (juce::TextButton::buttonOnColourId, Acid::accentFor (Acid::cyan));
-        static const char* const skinNames[] = { "SKIN: NEON", "SKIN: VINTAGE", "SKIN: CHROME", "SKIN: ROBOT", "SKIN: HYPER" };
-        skinButton.setButtonText (skinNames[juce::jlimit (0, 4, Acid::skin)]);
+        static const char* const skinNames[] = { "SKIN: NEON", "SKIN: VINTAGE", "SKIN: CHROME", "SKIN: ROBOT", "SKIN: HYPER", "SKIN: BULLY" };
+        skinButton.setButtonText (skinNames[juce::jlimit (0, Acid::numSkins - 1, Acid::skin)]);
 
         bpmKnob = std::make_unique<Knob> (proc.apvts, "bpm", "TEMPO", Acid::violet);
         volumeKnob = std::make_unique<Knob> (proc.apvts, "volume", "MASTER", Acid::violet);
@@ -2264,11 +2353,12 @@ private:
 
     void switchSkin()
     {
-        // Hyper -> Robot -> Chrome -> Vintage -> Neon -> Hyper
-        const int next = Acid::skin == Acid::Hyper ? Acid::Robot
+        // Bully -> Hyper -> Robot -> Chrome -> Vintage -> Neon -> Bully
+        const int next = Acid::skin == Acid::Bully ? Acid::Hyper
+                       : Acid::skin == Acid::Hyper ? Acid::Robot
                        : Acid::skin == Acid::Robot ? Acid::Chrome
                        : Acid::skin == Acid::Chrome ? Acid::Vintage
-                       : Acid::skin == Acid::Vintage ? Acid::Neon : Acid::Hyper;
+                       : Acid::skin == Acid::Vintage ? Acid::Neon : Acid::Bully;
         proc.skin = next;
         Acid::applySkin (next);
         lnf.refreshColours();
