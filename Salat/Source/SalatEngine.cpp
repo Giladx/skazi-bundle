@@ -88,7 +88,7 @@ const std::vector<skazi::ParamDef>& paramDefs()
         // Arrangement tool, kept out of presets / RANDOM / MAKE A SALAT (see keepOnPresetChange)
         { "riseOn", "Rise", P::Bool, 0, 1, 0 },
         { "riseLen", "Rise Length", P::Choice, 0, 3, 2, "", 1, 1, { "2 BARS", "4 BARS", "8 BARS", "16 BARS" } },
-        { "riseAmt", "Rise Amount", P::Float, -48, 48, 12, "st", 1.0f }, // whole semitones: always in tune
+        { "riseAmt", "Rise Amount", P::Float, -48, 48, 12, "st", 0.01f }, // free: any amount, glides smoothly; 12/24/48 buttons for exact octaves
     };
     return defs;
 }
@@ -668,7 +668,7 @@ void Engine::processRise (double beat, float& l, float& r, const Settings& s)
     uiRiseProgress.store (waiting ? -1.0f : progress);
 
     const float target = s.riseOn ? s.riseSemis * progress : 0.0f;
-    const float tau = s.riseOn ? 0.005f : 0.03f; // follow the ramp closely, drop back with a short glide
+    const float tau = s.riseOn ? 0.05f : 0.03f; // knob and button changes glide; the ramp itself is continuous
     riseSemisSm += (target - riseSemisSm) * (float) (1.0 - std::exp (-1.0 / (tau * sr)));
 
     // Always keep the delay line fed so switching on never starts from silence

@@ -311,7 +311,7 @@ SalatEditor::SalatEditor (SalatProcessor& p)
     riseOn->setTooltip ("Starts the pitch rise from this moment. Automate it in your DAW at the start of the build");
     riseLenRow = &addChoiceRow ("riseLen", {}, green);
     riseAmt = &addKnob ("riseAmt", "AMOUNT", green, "st", 34);
-    riseAmt->setFormatter ([] (double v) { return (v > 0.5 ? "+" : "") + String (roundToInt (v)) + " st"; });
+    riseAmt->setFormatter ([] (double v) { return (v > 0.05 ? "+" : "") + String (v, 1) + " st"; });
 
     // 12 / 24 / 48: one, two or four octaves in one click, keeping the direction (up or down)
     for (int q = 0; q < 3; ++q)
@@ -428,9 +428,9 @@ void SalatEditor::tick()
     chopView.repaint();
     filterView.repaint();
     riseView.repaint();
-    const int amt = std::abs (roundToInt (sp.v ("riseAmt")));
+    const float amt = std::abs (sp.v ("riseAmt"));
     for (int q = 0; q < 3; ++q)
-        riseQuick[q].setToggleState (amt == (q == 0 ? 12 : q == 1 ? 24 : 48), dontSendNotification);
+        riseQuick[q].setToggleState (std::abs (amt - (q == 0 ? 12.0f : q == 1 ? 24.0f : 48.0f)) < 0.05f, dontSendNotification);
     if (salatBtn.flash > 0.0f)
     {
         salatBtn.flash = jmax (0.0f, salatBtn.flash - 0.06f);
