@@ -154,6 +154,43 @@ void FilterView::paint (Graphics& g)
     tag (g, in, String (types[s.filterType]) + dot + skazi::formatValue (fc, "Hz") + dot + "RES " + String (roundToInt (s.reso * 100)) + "%");
 }
 
+void RiseView::paint (Graphics& g)
+{
+    auto in = screen (g, getLocalBounds().toFloat());
+    const auto s = proc.settings();
+    const float raw = proc.engine.uiRiseProgress.load();
+    const bool waiting = raw < 0.0f;
+    const float progress = jmax (0.0f, raw);
+    const float semis = proc.engine.uiRiseSemis.load();
+    const int bars = riseBars (s.riseLen);
+
+    // bar ticks, one per bar of the rise
+    auto track = in.reduced (12.0f, 0.0f).withTrimmedTop (28.0f).withTrimmedBottom (10.0f);
+    g.setColour (Colour (0xff141416));
+    g.fillRoundedRectangle (track, 4.0f);
+    for (int b = 1; b < bars; ++b)
+    {
+        g.setColour (Colours::white.withAlpha (b % 4 == 0 ? 0.18f : 0.07f));
+        g.drawVerticalLine ((int) (track.getX() + track.getWidth() * b / bars), track.getY(), track.getBottom());
+    }
+
+    const auto col = s.riseSemis >= 0.0f ? Colour (0xff22e3a5) : Colour (0xff7aa2ff);
+    if (s.riseOn)
+    {
+        auto fill = track.withWidth (jmax (2.0f, track.getWidth() * progress));
+        g.setGradientFill (ColourGradient (col.withAlpha (0.25f), fill.getX(), 0, col, fill.getRight(), 0, false));
+        g.fillRoundedRectangle (fill, 4.0f);
+    }
+
+    const String sign = semis >= 0.05f ? "+" : "";
+    const String text = ! s.riseOn ? String ("RISE OFF") + dot + "STARTS AND ENDS ON A BAR LINE" + dot + "NOT CHANGED BY RANDOM"
+                      : waiting ? String ("WAITING FOR THE NEXT BAR") + dot + String (bars) + " BARS TO " + (s.riseSemis > 0 ? "+" : "") + String (roundToInt (s.riseSemis)) + " st"
+                      : progress >= 1.0f ? String ("AT THE TOP") + dot + sign + String (semis, 1) + " st" + dot + "HOLDING"
+                                         : String ("RISING") + dot + sign + String (semis, 1) + " st" + dot + "BAR "
+                                               + String (jmin (bars, 1 + (int) (progress * bars))) + " OF " + String (bars);
+    tag (g, in, text);
+}
+
 void SalatButton::paintButton (Graphics& g, bool over, bool down)
 {
     auto r = getLocalBounds().toFloat().reduced (3.0f);
@@ -183,10 +220,13 @@ void SalatButton::paintButton (Graphics& g, bool over, bool down)
 SalatEditor::SalatEditor (SalatProcessor& p)
     : EditorBase (p, "SA", "LAT", String::fromUTF8 ("GLITCH MULTI-FX  \xc2\xb7  BY ASHER SWISSA"),
                   String::fromUTF8 ("SALAT v1.0  \xc2\xb7  TEMPO-SYNCED CHOPPER + 7 FX  \xc2\xb7  VST3 / AU  \xc2\xb7  EFFECT")),
-      sp (p), chopView (p), filterView (p)
+      sp (p), chopView (p), filterView (p), riseView (p)
 {
+    setSubtitleSize (15.0f);
+
     addAndMakeVisible (chopView);
     addAndMakeVisible (filterView);
+    addAndMakeVisible (riseView);
 
     addAndMakeVisible (salatBtn);
     salatBtn.setTooltip ("Throws a random mix of effects together and chops the next four steps");
@@ -267,7 +307,33 @@ SalatEditor::SalatEditor (SalatProcessor& p)
     outMeter = &addMeter (p.engine.uiOut);
     grMeter = &addMeter (p.engine.uiReduction, true);
 
-    setSize (1200, 590);
+    riseOn = &addToggle ("riseOn", "ON");
+    riseOn->setTooltip ("Starts the pitch rise from this moment. Automate it in your DAW at the start of the build");
+    riseLenRow = &addChoiceRow ("riseLen", {}, green);
+    riseAmt = &addKnob ("riseAmt", "AMOUNT", green, "st", 34);
+    riseAmt->setFormatter ([] (double v) { return (v > 0.5 ? "+" : "") + String (roundToInt (v)) + " st"; });
+
+    // 12 / 24 / 48: one, two or four octaves in one click, keeping the direction (up or down)
+    for (int q = 0; q < 3; ++q)
+    {
+        auto& b = riseQuick[q];
+        const int semis = q == 0 ? 12 : q == 1 ? 24 : 48;
+        b.setTooltip ("Rise " + String (semis / 12) + (semis == 12 ? " octave" : " octaves"));
+        b.setClickingTogglesState (false);
+        b.onClick = [this, semis]
+        {
+            if (auto* prm = sp.apvts.getParameter ("riseAmt"))
+            {
+                const float now = sp.v ("riseAmt");
+                prm->beginChangeGesture();
+                prm->setValueNotifyingHost (prm->convertTo0to1 (now < 0.0f ? (float) -semis : (float) semis));
+                prm->endChangeGesture();
+            }
+        };
+        addAndMakeVisible (b);
+    }
+
+    setSize (1200, 680);
 }
 
 void SalatEditor::layout()
@@ -343,12 +409,28 @@ void SalatEditor::layout()
     grMeter->setBounds (1162, y + 30, 10, 96);
     label ({ 1141, y + 128, 24, 12 }, "OUT");
     label ({ 1161, y + 128, 20, 12 }, "GR");
+
+    // RISE: long pitch build-ups, left alone by presets, RANDOM and MAKE A SALAT
+    y = 552;
+    panel ({ 20, y, 1160, 86 }, "RISE");
+    toggle (*riseOn, 70, y);
+    label ({ 30, y + 34, 60, 20 }, "LENGTH");
+    riseLenRow->setBounds (88, y + 33, 300, 22);
+    put (*riseAmt, 398, y + 18, 34, 70);
+    label ({ 476, y + 12, 150, 16 }, "RANGE (SEMITONES)");
+    for (int q = 0; q < 3; ++q)
+        riseQuick[q].setBounds (480 + q * 50, y + 33, 44, 22);
+    riseView.setBounds (640, y + 6, 532, 74);
 }
 
 void SalatEditor::tick()
 {
     chopView.repaint();
     filterView.repaint();
+    riseView.repaint();
+    const int amt = std::abs (roundToInt (sp.v ("riseAmt")));
+    for (int q = 0; q < 3; ++q)
+        riseQuick[q].setToggleState (amt == (q == 0 ? 12 : q == 1 ? 24 : 48), dontSendNotification);
     if (salatBtn.flash > 0.0f)
     {
         salatBtn.flash = jmax (0.0f, salatBtn.flash - 0.06f);

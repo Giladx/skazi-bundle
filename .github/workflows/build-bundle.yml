@@ -3,13 +3,20 @@ name: Build SKAZI Bundle
 # Builds every SKAZI plugin and both installers:
 #   Mac:     SKAZI Bundle.pkg          (VST3 + AU + apps, Apple Silicon + Intel)
 #   Windows: SKAZI Bundle Setup.exe    (VST3 + apps)
-# Download them from the run's "Artifacts" section.
+# On main, when both build, they are published as the next release (v1.3, v1.4, ...) and marked latest,
+# so the download page (which links to releases/latest) serves them right away.
+# Other branches: download them from the run's "Artifacts" section.
 on:
   push:
     paths-ignore:
       - "docs/**"
       - "**.md"
   workflow_dispatch:
+
+# a newer push replaces a build still running, so releases never come out of order
+concurrency:
+  group: bundle-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   mac:
@@ -34,3 +41,49 @@ jobs:
         with:
           name: SKAZI-Bundle-Windows
           path: dist/SKAZI Bundle Setup.exe
+
+  release:
+    needs: [mac, windows]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - name: Publish the next release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mv "art/SKAZI-Bundle-Windows/SKAZI Bundle Setup.exe" SKAZI.Bundle.Setup.exe
+          mv "art/SKAZI-Bundle-Mac/SKAZI Bundle.pkg" SKAZI.Bundle.pkg
+
+          # next version: the highest vX.Y tag with Y + 1
+          last=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          last=${last:-v1.0}
+          major=${last#v}; minor=${major#*.}; major=${major%%.*}
+          tag="v${major}.$((minor + 1))"
+          echo "Publishing $tag"
+
+          # the plugin table comes from the README, so a plugin added there shows up in the notes
+          plugins=$(awk -F'|' '/^\| Folder/ {on=1; next} on && /^\|---/ {next} on && /^\|/ {gsub(/^ +| +$/, "", $3); gsub(/^ +| +$/, "", $4); print "| **" $3 "** | " $4 " |"; next} on {exit}' README.md)
+          count=$(printf '%s\n' "$plugins" | grep -c .)
+          {
+            echo "# SKAZI Bundle ${tag#v} by Asher Swissa"
+            echo
+            echo "All $count SKAZI plugins in one installer, listed under **SKAZI** in your DAW."
+            echo
+            echo "| Plugin | What it is |"
+            echo "|---|---|"
+            printf '%s\n' "$plugins"
+            echo
+            cat .github/release-install.md
+          } > notes.md
+
+          gh release create "$tag" --target "$GITHUB_SHA" --title "SKAZI Bundle ${tag#v}" \
+            --notes-file notes.md --latest SKAZI.Bundle.Setup.exe SKAZI.Bundle.pkg

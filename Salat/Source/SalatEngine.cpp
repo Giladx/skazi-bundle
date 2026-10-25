@@ -26,6 +26,7 @@ double chopStepBeats (int index) { return pickAt (kStepBeats, index); }
 int chopRepeats (int index) { return pickAt (kRepeats, index); }
 double lfoBeats (int index) { return pickAt (kLfoBeats, index); }
 double delayBeats (int index) { return pickAt (kDelayBeats, index); }
+int riseBars (int index) { static const int bars[] = { 2, 4, 8, 16 }; return bars[juce::jlimit (0, 3, index)]; }
 
 const std::vector<skazi::ParamDef>& paramDefs()
 {
@@ -83,6 +84,11 @@ const std::vector<skazi::ParamDef>& paramDefs()
         { "revSize", "Reverb Size", P::Float, 0, 100, 60, "%", 0.1f },
         { "revDamp", "Reverb Damping", P::Float, 0, 100, 50, "%", 0.1f },
         { "revMix", "Reverb Mix", P::Float, 0, 100, 25, "%", 0.1f },
+
+        // Arrangement tool, kept out of presets / RANDOM / MAKE A SALAT (see keepOnPresetChange)
+        { "riseOn", "Rise", P::Bool, 0, 1, 0 },
+        { "riseLen", "Rise Length", P::Choice, 0, 3, 2, "", 1, 1, { "2 BARS", "4 BARS", "8 BARS", "16 BARS" } },
+        { "riseAmt", "Rise Amount", P::Float, -48, 48, 12, "st", 1.0f }, // whole semitones: always in tune
     };
     return defs;
 }
@@ -105,6 +111,7 @@ Settings Settings::fromValues (const std::function<float (const char*)>& v)
     s.delayOn = v ("dlyOn") > 0.5f; s.delayTime = (int) v ("dlyTime");
     s.delayFb = v ("dlyFb") * 0.01f; s.delayTone = v ("dlyTone") * 0.01f; s.delayMix = v ("dlyMix") * 0.01f;
     s.reverbOn = v ("revOn") > 0.5f; s.reverbSize = v ("revSize") * 0.01f; s.reverbDamp = v ("revDamp") * 0.01f; s.reverbMix = v ("revMix") * 0.01f;
+    s.riseOn = v ("riseOn") > 0.5f; s.riseLen = (int) v ("riseLen"); s.riseSemis = v ("riseAmt");
     return s;
 }
 
@@ -167,6 +174,15 @@ void Engine::prepare (double sampleRate, int maxBlock)
 
     reverb.setSampleRate (sr);
     reverb.reset();
+
+    riseFadeLen = juce::jmax (64, (int) (0.006 * sr));      // 6 ms crossfade at each jump
+    riseSize = nextPow2 ((int) (0.7 * sr));                  // room for +48 st (reading 16x faster)
+    for (auto& b : riseBuf) b.assign ((size_t) riseSize, 0.0f);
+    riseWrite = 0;
+    riseDelay = 0.04 * sr;
+    riseFading = false;
+    riseWasOn = false;
+    riseSemisSm = 0.0f;
 
     for (int c = 0; c < 2; ++c) { crushHold[c] = ic1[c] = ic2[c] = modFbState[c] = delayLp[c] = 0.0f; }
     primed = false;
@@ -329,6 +345,7 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s, const
 
     // where each sample sits on the beat grid: the host's when playing, our own clock when stopped
     beatsPerSample = host.bpm / 60.0 / sr;
+    beatsPerBar = host.beatsPerBar;
     blockBeat = host.playing ? host.ppq : freeBeat;
     freeBeat = blockBeat + n * beatsPerSample;
     stepSamples = chopStepBeats (s.chopStep) / beatsPerSample;
@@ -594,6 +611,7 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s, const
         outSm += (s.outGain - outSm) * sm;
         l = (dry.getSample (0, i) * (1.0f - mixSm) + l * mixSm) * outSm;
         r = (dry.getSample (1, i) * (1.0f - mixSm) + r * mixSm) * outSm;
+        processRise (blockBeat + i * beatsPerSample, l, r, s);
         if (! std::isfinite (l) || ! std::isfinite (r)) l = r = 0.0f;
 
         // instant-attack peak limiter at -0.5 dB, then the shared soft clip
@@ -626,5 +644,116 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s, const
     const float decay = (float) std::exp (-(double) n / (0.2 * sr));
     uiIn.store (inPk); uiOut.store (outPk); uiReduction.store (minGain);
     inPk *= decay; outPk *= decay;
+    uiRiseSemis.store (riseSemisSm);
+}
+
+void Engine::processRise (double beat, float& l, float& r, const Settings& s)
+{
+    // The rise sits on the DAW's bar grid: it starts on a bar line, climbs linearly in semitones
+    // over the chosen number of bars, so it ends exactly on a bar line, then holds at the top.
+    // Switched on in the first quarter of a bar (automation a little early or late) it counts from
+    // that bar's start; later than that it waits for the next bar line.
+    const bool jumpedBack = beat < riseLastBeat - 0.5; // the host looped or the user moved the cursor
+    if (s.riseOn && (! riseWasOn || jumpedBack))
+    {
+        const double barStart = std::floor (beat / beatsPerBar + 1.0e-6) * beatsPerBar;
+        riseStartBeat = beat - barStart <= 0.25 * beatsPerBar ? barStart : barStart + beatsPerBar;
+    }
+    riseWasOn = s.riseOn;
+    riseLastBeat = beat;
+
+    const double lengthBeats = riseBars (s.riseLen) * beatsPerBar;
+    const bool waiting = s.riseOn && beat < riseStartBeat;
+    const float progress = s.riseOn ? (float) juce::jlimit (0.0, 1.0, (beat - riseStartBeat) / lengthBeats) : 0.0f;
+    uiRiseProgress.store (waiting ? -1.0f : progress);
+
+    const float target = s.riseOn ? s.riseSemis * progress : 0.0f;
+    const float tau = s.riseOn ? 0.005f : 0.03f; // follow the ramp closely, drop back with a short glide
+    riseSemisSm += (target - riseSemisSm) * (float) (1.0 - std::exp (-1.0 / (tau * sr)));
+
+    // Always keep the delay line fed so switching on never starts from silence
+    riseBuf[0][(size_t) riseWrite] = l;
+    riseBuf[1][(size_t) riseWrite] = r;
+    riseWrite = (riseWrite + 1) & (riseSize - 1);
+
+    // Below a quarter semitone, blend towards the untouched signal (the shifted path runs ~35 ms late)
+    const float blend = juce::jlimit (0.0f, 1.0f, std::abs (riseSemisSm) * 4.0f);
+    if (blend <= 0.0f && ! riseFading)
+        return;
+
+    // Reading faster than real time shortens the delay (pitch up), slower lengthens it (pitch down)
+    const double speed = std::exp2 (riseSemisSm / 12.0) - 1.0;
+    riseDelay -= speed;
+    if (riseFading) riseFadeDelay -= speed;
+
+    // The read point needs room to drift: the faster it reads (up to 16x at +48 st), the wider the
+    // window, and the further from the write point it must stay, since the old tap keeps moving
+    // through a crossfade.
+    const double fade = riseFadeLen;
+    const double lo = std::max (speed, 0.0) * fade + fade + 8.0;
+    const double window = std::min (std::max (0.05 * sr, std::abs (speed) * fade * 3.0), riseSize - lo - 3.0 * fade);
+    const double hi = lo + window;
+    if (! riseFading && (riseDelay < lo || riseDelay > hi))
+    {
+        // jump back across the window to where the waveform lines up best, then crossfade
+        const double from = riseDelay;
+        riseDelay = speed > 0 ? riseBestJump (from, std::max (lo, from + 0.45 * window), std::min (hi, from + window))
+                              : riseBestJump (from, std::max (lo, from - window), std::min (hi, from - 0.45 * window));
+        riseFadeDelay = from;
+        riseFading = true;
+        riseFadePos = 0;
+    }
+
+    float out[2];
+    for (int c = 0; c < 2; ++c)
+    {
+        out[c] = riseRead (c, riseDelay);
+        if (riseFading)
+        {
+            const float t = (float) riseFadePos / (float) riseFadeLen;
+            const float a = std::cos (t * juce::MathConstants<float>::halfPi), b = std::sin (t * juce::MathConstants<float>::halfPi);
+            out[c] = riseRead (c, riseFadeDelay) * a + out[c] * b;
+        }
+    }
+    if (riseFading && ++riseFadePos >= riseFadeLen)
+        riseFading = false;
+
+    l += (out[0] - l) * blend;
+    r += (out[1] - r) * blend;
+}
+
+float Engine::riseRead (int c, double delay) const
+{
+    // the newest sample sits at riseWrite - 1
+    const double pos = riseWrite - 1 - delay;
+    const double fl = std::floor (pos);
+    const float frac = (float) (pos - fl);
+    const int i0 = (int) ((juce::int64) fl & (riseSize - 1)), i1 = (i0 + 1) & (riseSize - 1);
+    const auto& b = riseBuf[c];
+    return b[(size_t) i0] + (b[(size_t) i1] - b[(size_t) i0]) * frac;
+}
+
+double Engine::riseBestJump (double from, double lo, double hi) const
+{
+    // Compare what the current read point is about to play with each candidate (mono, coarse steps;
+    // at most ~160 candidates, so wide windows at high pitch don't cost more)
+    const int len = riseFadeLen;
+    const double step = std::max (3.0, (hi - lo) / 160.0);
+    double best = -1.0e30, bestDelay = 0.5 * (lo + hi);
+    for (double cand = lo; cand <= hi; cand += step)
+    {
+        double corr = 0.0, energy = 1.0e-9;
+        for (int k = 0; k < len; k += 2)
+        {
+            // both read points move forward in time over the fade, i.e. towards smaller delays
+            const float a = riseRead (0, from - k) + riseRead (1, from - k);
+            const float b = riseRead (0, cand - k) + riseRead (1, cand - k);
+            corr += a * b;
+            energy += b * b;
+        }
+        const double score = corr / std::sqrt (energy);
+        if (score > best) { best = score; bestDelay = cand; }
+    }
+    return bestDelay;
 }
 } // namespace salat

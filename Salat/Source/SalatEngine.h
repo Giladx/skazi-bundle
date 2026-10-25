@@ -21,6 +21,7 @@ double chopStepBeats (int index);
 int chopRepeats (int index);
 double lfoBeats (int index);
 double delayBeats (int index);
+int riseBars (int index);
 
 struct Settings
 {
@@ -34,6 +35,7 @@ struct Settings
     bool modOn = false; int modType = Flanger; float modRate = 0.3f, modDepth = 0.6f, modFb = 0.5f, modMix = 0.5f;
     bool delayOn = false; int delayTime = 4; float delayFb = 0.4f, delayTone = 0.5f, delayMix = 0.3f;
     bool reverbOn = false; float reverbSize = 0.6f, reverbDamp = 0.5f, reverbMix = 0.25f;
+    bool riseOn = false; int riseLen = 2; float riseSemis = 12;
     static Settings fromValues (const std::function<float (const char*)>& v);
 };
 
@@ -54,6 +56,7 @@ public:
 
     // Read by the editor
     std::atomic<float> uiIn { 0 }, uiOut { 0 }, uiReduction { 1 }, uiCutoff { 8000 }, uiStepPhase { 0 };
+    std::atomic<float> uiRiseProgress { 0 }, uiRiseSemis { 0 }; // progress is -1 while waiting for the bar line
     static constexpr int kHistory = 16, kScope = 256;
     std::array<std::atomic<int>, kHistory> history {};   // event per step, ring buffer
     std::atomic<int> historyCount { 0 };
@@ -71,6 +74,7 @@ private:
     };
 
     void processChop (int i, float& l, float& r, const Settings& s);
+    void processRise (double beat, float& l, float& r, const Settings& s);
     void startEvent (int type, const Settings& s, bool hold);
     float readChop (int c, double idx) const;
 
@@ -106,6 +110,16 @@ private:
     std::vector<float> delayBuf[2]; int delaySize = 1, delayWrite = 0; float delayLp[2] {};
     juce::Reverb reverb;
     float limiterGain = 1;
+
+    // RISE: a pitch shifter swept up or down over 2-16 bars. One read point drifts through a
+    // delay line; when it runs out of room it jumps to the best-matching spot and crossfades (SOLA).
+    std::vector<float> riseBuf[2]; int riseSize = 1, riseWrite = 0;
+    double riseDelay = 0, riseFadeDelay = 0, riseStartBeat = 0, riseLastBeat = 0, beatsPerBar = 4;
+    int riseFadePos = 0, riseFadeLen = 256;
+    bool riseWasOn = false, riseFading = false;
+    float riseSemisSm = 0;
+    float riseRead (int c, double delay) const;
+    double riseBestJump (double from, double lo, double hi) const;
 
     float inPk = 0, outPk = 0, scopePk = 0; int scopeCount = 0, scopeEventNow = None;
 };
