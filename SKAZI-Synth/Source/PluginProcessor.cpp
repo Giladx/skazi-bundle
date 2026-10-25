@@ -180,6 +180,25 @@ juce::AudioProcessorValueTreeState::ParameterLayout AcidanceProcessor::createLay
 
     addF (l, "volume", "Master Volume", 0.f, 2.f, 0.8f);
     addF (l, "pan", "Master Pan", -1.f, 1.f, 0.f);
+
+    // Added in 1.3: always appended, so existing automation and projects keep working
+    addF (l, "dist_tone", "Dist Tone", 0.f, 1.f, 1.f);
+    addB (l, "fxf_on", "FX Filter On", false);
+    addC (l, "fxf_type", "FX Filter Type", Lists::fxFilterTypes, 0);
+    addF (l, "fxf_cut", "FX Filter Cutoff", 20.f, 20000.f, 2000.f, 1000.f);
+    addF (l, "fxf_res", "FX Filter Resonance", 0.f, 1.f, 0.2f);
+    addF (l, "fxf_drive", "FX Filter Drive", 0.f, 1.f, 0.f);
+    addF (l, "fxf_mix", "FX Filter Mix", 0.f, 1.f, 1.f);
+    addB (l, "wid_on", "Width On", false);
+    addF (l, "wid_amt", "Stereo Width", 0.f, 2.f, 1.3f);
+    addF (l, "wid_mono", "Bass Mono Below", 20.f, 500.f, 150.f, 120.f);
+    addB (l, "arp_on", "Arp On", false);
+    addC (l, "arp_mode", "Arp Mode", Lists::arpModes, 0);
+    addC (l, "arp_div", "Arp Rate", Lists::divisions, 2);
+    addI (l, "arp_oct", "Arp Octaves", 1, 4, 1);
+    addF (l, "arp_gate", "Arp Gate", 0.05f, 1.f, 0.6f);
+    addF (l, "arp_swing", "Arp Swing", 0.f, 1.f, 0.f);
+    addF (l, "drift", "Analog Drift", 0.f, 1.f, 0.4f);
     return l;
 }
 
@@ -229,6 +248,12 @@ AcidanceProcessor::AcidanceProcessor()
     pSeqOn = get ("seq_on"); pSeqPattern = get ("seq_pattern"); pSeqTranspose = get ("seq_transpose");
     pSeqGate = get ("seq_gate"); pBpm = get ("bpm"); pRun = get ("run"); pShuffle = get ("shuffle");
     pDistOn = get ("dist_on"); pDistType = get ("dist_type"); pDistDrive = get ("dist_drive"); pDistMix = get ("dist_mix");
+    pDistTone = get ("dist_tone");
+    pFxfOn = get ("fxf_on"); pFxfType = get ("fxf_type"); pFxfCut = get ("fxf_cut"); pFxfRes = get ("fxf_res");
+    pFxfDrive = get ("fxf_drive"); pFxfMix = get ("fxf_mix");
+    pWidOn = get ("wid_on"); pWidAmt = get ("wid_amt"); pWidMono = get ("wid_mono");
+    pArpOn = get ("arp_on"); pArpMode = get ("arp_mode"); pArpDiv = get ("arp_div"); pArpOct = get ("arp_oct");
+    pArpGate = get ("arp_gate"); pArpSwing = get ("arp_swing");
     pMfxOn = get ("mfx_on"); pMfxType = get ("mfx_type"); pMfxRate = get ("mfx_rate"); pMfxDepth = get ("mfx_depth");
     pMfxFb = get ("mfx_fb"); pMfxMix = get ("mfx_mix");
     pDlyOn = get ("dly_on"); pDlySync = get ("dly_sync"); pDlyDiv = get ("dly_div"); pDlyMs = get ("dly_ms");
@@ -239,7 +264,7 @@ AcidanceProcessor::AcidanceProcessor()
     pEqOn = get ("eq_on"); pEqLf = get ("eq_lf"); pEqLg = get ("eq_lg"); pEqMf = get ("eq_mf"); pEqMq = get ("eq_mq");
     pEqMg = get ("eq_mg"); pEqHf = get ("eq_hf"); pEqHg = get ("eq_hg");
     pVolume = get ("volume"); pPan = get ("pan");
-    pOversample = get ("oversample"); pWarmth = get ("warmth");
+    pOversample = get ("oversample"); pWarmth = get ("warmth"); pDrift = get ("drift");
 
     for (int v = 0; v <= kNumVoices; ++v) voices[v].seed ((uint32_t) (v + 1) * 7919u);
     for (int p = 0; p < kNumPatterns; ++p) seq.randomise (p, (uint32_t) (1234 + p * 77));
@@ -286,11 +311,76 @@ void AcidanceProcessor::setCurrentProgram (int index)
     });
 }
 
+namespace
+{
+    // Plays a sound offline in a scratch instance (no host) and returns its RMS and peak
+    // at volume `vol`. RANDOM uses it so a new sound is never silent and never slams the limiter.
+    struct Probe { double rms = 0.0; float peak = 0.f; bool ok = true; };
+
+    Probe probeSound (const juce::XmlElement& state, double sampleRate, float vol)
+    {
+        AcidanceProcessor q;
+        q.applyStateXml (state);
+        q.setParam ("volume", vol);
+        const bool seq = q.apvts.getRawParameterValue ("seq_on")->load() > 0.5f;
+        const bool arp = q.apvts.getRawParameterValue ("arp_on")->load() > 0.5f;
+        const bool poly = q.apvts.getRawParameterValue ("mode")->load() < 0.5f;
+        q.setParam ("run", seq ? 1.f : 0.f);   // the pattern needs a clock to play
+        constexpr int block = 512;
+        q.setPlayConfigDetails (0, 2, sampleRate, block);
+        q.prepareToPlay (sampleRate, block);
+
+        const int total = (int) (sampleRate * 2.5), offAt = (int) (sampleRate * 2.0);
+        juce::AudioBuffer<float> buf (2, block);
+        Probe r;
+        double sum = 0.0;
+        for (int pos = 0; pos < total; pos += block)
+        {
+            juce::MidiBuffer midi;
+            const int chord[] = { 57, 60, 64 };
+            const int* notes = seq ? chord + 1 : (poly || arp) ? chord : nullptr;
+            const int numNotes = seq ? 1 : (poly || arp) ? 3 : 1;
+            for (int k = 0; k < numNotes; ++k)
+            {
+                const int n = notes != nullptr ? notes[k] : 48;
+                if (pos == 0) midi.addEvent (juce::MidiMessage::noteOn (1, n, (juce::uint8) 100), 0);
+                if (offAt >= pos && offAt < pos + block) midi.addEvent (juce::MidiMessage::noteOff (1, n), offAt - pos);
+            }
+            q.processBlock (buf, midi);
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (c, i);
+                    if (! std::isfinite (v)) r.ok = false;
+                    r.peak = std::max (r.peak, std::abs (v));
+                    sum += (double) v * v;
+                }
+        }
+        r.rms = std::sqrt (sum / (2.0 * (total / block) * block));
+        return r;
+    }
+}
+
 void AcidanceProcessor::randomizeSound()
 {
     fader.change ([this]
     {
-        const auto style = Presets::randomSound (*this);
+        // Roll a new sound, test-play it, and keep it only if it is clearly audible; then set the
+        // master volume so every RANDOM press comes out about as loud as the factory presets.
+        constexpr float probeVol = 0.1f;   // low enough that the output limiter never touches the test
+        constexpr double target = 0.12, silent = 0.004;
+        const double rate = sr > 0.0 ? sr : 48000.0;
+        juce::String style;
+        Probe pr;
+        for (int attempt = 0; attempt < 8; ++attempt)
+        {
+            style = Presets::randomSound (*this);
+            pr = probeSound (*createStateXml(), rate, probeVol);
+            if (pr.ok && pr.rms > silent) break;
+        }
+        float vol = (float) (probeVol * target / std::max (pr.rms, silent));
+        if (pr.peak > 0.f) vol = std::min (vol, probeVol * 0.95f / pr.peak);   // peaks stay under full scale
+        setParam ("volume", juce::jlimit (0.05f, 1.6f, vol));
         currentPresetName = "Random " + style + " #" + juce::String (juce::Random::getSystemRandom().nextInt ({ 1000, 10000 }));
         currentPresetFolder = "Random";
         ++programChanges;
@@ -315,14 +405,65 @@ void AcidanceProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
             2, (size_t) (k + 1), juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, false);
         oversamplers[k]->initProcessing ((size_t) oversampleBlock);
     }
+    // The IIR half-band filters delay the sound by a few samples. Their nominal figure doesn't match
+    // what you hear, so measure each one: an oversampled saw goes down, cross-correlation finds the delay.
+    // Then every factor is padded to the largest, which is what the host is told.
+    latencyTotal = 0;
+    int lat[4] { 0, 0, 0, 0 };
+    {
+        const int n = std::min (oversampleBlock, 2048);
+        juce::AudioBuffer<float> test (2, n);
+        std::vector<float> src ((size_t) n);
+        float ph = 0.f;
+        for (int i = 0; i < n; ++i)
+        {
+            src[(size_t) i] = 2.f * ph - 1.f;
+            ph += 130.81f / (float) sampleRate;
+            if (ph >= 1.f) ph -= 1.f;
+        }
+        for (int k = 0; k < 3; ++k)
+        {
+            // the voices write straight into the oversampled buffer, so only the way down delays them
+            const int f = 2 << k;
+            test.clear();
+            juce::dsp::AudioBlock<float> blk (test);
+            auto up = oversamplers[k]->processSamplesUp (blk);
+            float uph = 0.f;
+            for (int i = 0; i < n * f; ++i)
+            {
+                for (int c = 0; c < 2; ++c) up.setSample (c, i, 2.f * uph - 1.f);
+                uph += 130.81f / (float) (sampleRate * f);
+                if (uph >= 1.f) uph -= 1.f;
+            }
+            oversamplers[k]->processSamplesDown (blk);
+            oversamplers[k]->reset();
+            const float* y = test.getReadPointer (0);
+            double bestDot = -1.0e30;
+            for (int d = 0; d <= 16; ++d)
+            {
+                double dot = 0.0;
+                for (int i = n / 4; i < n - 16; ++i) dot += (double) src[(size_t) i] * y[i + d];
+                if (dot > bestDot) { bestDot = dot; lat[k + 1] = d; }
+            }
+            latencyTotal = std::max (latencyTotal, lat[k + 1]);
+        }
+    }
+    for (int k = 0; k < 4; ++k) latencyPad[k] = latencyTotal - lat[k];
+    for (auto& b : padBuf) b.assign (64, 0.f);
+    padPos = 0;
+    setLatencySamples (latencyTotal);
     numHeld = 0;
     modFx.prepare (sampleRate);
+    fxFilter.prepare (sampleRate);
+    width.prepare (sampleRate);
     delay.prepare (sampleRate);
     reverb.prepare (sampleRate);
     comp.prepare (sampleRate, samplesPerBlock);
     eq.prepare (sampleRate);
     clockStep = std::numeric_limits<int64_t>::min();
     wasRunning = false;
+    arpStop();
+    arpHeldCount = 0;
 }
 
 int AcidanceProcessor::findVoice()
@@ -401,6 +542,9 @@ void AcidanceProcessor::allNotesOff()
     for (auto& v : voices) v.release();
     numHeld = 0;
     lastSlide = false;
+    arpHeldCount = 0;
+    arpSoundingCount = 0;
+    arpDirty = true;
 }
 
 void AcidanceProcessor::resetControllers()
@@ -417,6 +561,9 @@ void AcidanceProcessor::panic()
 {
     for (auto& v : voices) v.hardReset();
     numHeld = 0;
+    arpHeldCount = 0;
+    arpSoundingCount = 0;
+    arpDirty = true;
     lastSlide = false;
     seqKeyOffset = 0;
     seqKeys.fill (false);
@@ -428,6 +575,9 @@ void AcidanceProcessor::panic()
     reverb.reset();
     comp.reset();
     eq.reset();
+    fxFilter.reset();
+    width.reset();
+    for (auto& b : padBuf) std::fill (b.begin(), b.end(), 0.f);
 }
 
 bool AcidanceProcessor::seqGateOpen() const
@@ -468,6 +618,13 @@ void AcidanceProcessor::seqStepStart (int step)
     }
 }
 
+// A key that lands a little after a step boundary (a DAW note a few samples late, or a key played
+// by hand) plays the current step at once instead of waiting a whole 16th for the next one.
+bool AcidanceProcessor::seqCanCatchUp() const
+{
+    return clockPlaying && stepStarted && ! stepEndDone && stepFrac - stepOffset < 0.5;
+}
+
 void AcidanceProcessor::seqStepEnd()
 {
     auto& sv = voices[kNumVoices];
@@ -506,7 +663,9 @@ void AcidanceProcessor::handleMidi (const juce::MidiMessage& m, bool seqArmed)
         if (m.isNoteOn())
         {
             seqKeyOffset = m.getNoteNumber() - 60;
+            const bool opens = seqKeyCount == 0;
             if (! seqKeys[(size_t) m.getNoteNumber()]) { seqKeys[(size_t) m.getNoteNumber()] = true; ++seqKeyCount; }
+            if (opens && seqCanCatchUp()) seqStepStart ((int) (clockStep % kNumSteps));
         }
         else if (m.isNoteOff() && seqKeys[(size_t) m.getNoteNumber()])
         {
@@ -527,9 +686,140 @@ void AcidanceProcessor::handleMidi (const juce::MidiMessage& m, bool seqArmed)
         return;
     }
 
+    if (arpWasActive)
+    {
+        if (m.isNoteOn()) arpKeyDown (m.getNoteNumber(), m.getFloatVelocity(), clockPlaying);
+        else if (m.isNoteOff()) arpKeyUp (m.getNoteNumber());
+        else if (m.isAllNotesOff() || m.isAllSoundOff()) { arpStop(); arpHeldCount = 0; allNotesOff(); }
+        return;
+    }
+
     if (m.isNoteOn()) noteOn (m.getNoteNumber(), m.getFloatVelocity(), m.getVelocity() >= 100);
     else if (m.isNoteOff()) noteOff (m.getNoteNumber());
     else if (m.isAllNotesOff() || m.isAllSoundOff()) allNotesOff();
+}
+
+//==============================================================================
+void AcidanceProcessor::arpKeyDown (int note, float vel, bool playing)
+{
+    for (int i = 0; i < arpHeldCount; ++i)
+        if (arpHeld[i] == note) return;
+    if (arpHeldCount >= 32) return;
+    const bool first = arpHeldCount == 0;
+    arpHeld[arpHeldCount] = note;
+    arpOrder[arpHeldCount] = note;
+    ++arpHeldCount;
+    arpVel = vel;
+    arpDirty = true;
+    if (! first) return;
+
+    arpIndex = 0;
+    if (! playing)
+    {
+        // no song running: a free clock that starts right on the key
+        arpFreePos = 0.0;
+        arpStep = 0;
+        arpFrac = arpOffset = 0.0;
+        arpStarted = arpGateDone = false;   // fires on this very sample
+    }
+    else if (arpStarted && ! arpGateDone && arpFrac - arpOffset < 0.5)
+        arpFire();   // just after a step boundary: play this step now, not one step late
+}
+
+void AcidanceProcessor::arpKeyUp (int note)
+{
+    int idx = -1;
+    for (int i = 0; i < arpHeldCount; ++i) if (arpHeld[i] == note) idx = i;
+    if (idx >= 0)
+    {
+        for (int i = idx; i < arpHeldCount - 1; ++i) arpHeld[i] = arpHeld[i + 1];
+        --arpHeldCount;
+        int o = -1;
+        for (int i = 0; i <= arpHeldCount; ++i) if (arpOrder[i] == note) o = i;
+        if (o >= 0) for (int i = o; i < arpHeldCount; ++i) arpOrder[i] = arpOrder[i + 1];
+        arpDirty = true;
+    }
+    if (arpHeldCount == 0) arpReleaseSounding();   // last key up: the arp stops at once
+}
+
+void AcidanceProcessor::arpRebuild()
+{
+    arpDirty = false;
+    arpSeqLen = 0;
+    if (arpHeldCount == 0) return;
+    int asc[32];
+    for (int i = 0; i < arpHeldCount; ++i) asc[i] = arpHeld[i];
+    std::sort (asc, asc + arpHeldCount);
+    const int mode = (int) pArpMode->load();
+    const int octs = juce::jlimit (1, 4, (int) pArpOct->load());
+    const int* src = mode == ArpPlayed ? arpOrder : asc;
+    int up[128];
+    int n = 0;
+    for (int o = 0; o < octs; ++o)
+        for (int i = 0; i < arpHeldCount; ++i)
+            up[n++] = std::min (127, src[i] + 12 * o);
+    auto push = [this] (int v) { if (arpSeqLen < 256) arpSeq[arpSeqLen++] = v; };
+    switch (mode)
+    {
+        case ArpDown: for (int i = n - 1; i >= 0; --i) push (up[i]); break;
+        case ArpUpDown:
+            for (int i = 0; i < n; ++i) push (up[i]);
+            for (int i = n - 2; i >= 1; --i) push (up[i]);
+            break;
+        case ArpDownUp:
+            for (int i = n - 1; i >= 0; --i) push (up[i]);
+            for (int i = 1; i <= n - 2; ++i) push (up[i]);
+            break;
+        case ArpConverge:
+            for (int lo = 0, hi = n - 1; lo <= hi; ++lo, --hi)
+            {
+                push (up[lo]);
+                if (hi != lo) push (up[hi]);
+            }
+            break;
+        default: for (int i = 0; i < n; ++i) push (up[i]); break;   // Up, Random, Played, Chord
+    }
+}
+
+void AcidanceProcessor::arpReleaseSounding()
+{
+    for (int i = 0; i < arpSoundingCount; ++i) noteOff (arpSounding[i]);
+    arpSoundingCount = 0;
+}
+
+void AcidanceProcessor::arpStop()
+{
+    arpReleaseSounding();
+    arpStep = std::numeric_limits<int64_t>::min();
+    arpStarted = arpGateDone = false;
+}
+
+void AcidanceProcessor::arpFire()
+{
+    arpReleaseSounding();
+    if (arpHeldCount == 0) return;
+    if (arpDirty) arpRebuild();
+    if (arpSeqLen == 0) return;
+    const int mode = (int) pArpMode->load();
+    auto play = [this] (int note)
+    {
+        noteOn (note, arpVel, false);
+        if (arpSoundingCount < 32) arpSounding[arpSoundingCount++] = note;
+    };
+    if (mode == ArpChord)
+    {
+        // the whole chord on every step, climbing one octave per step through the octave range
+        const int octs = juce::jlimit (1, 4, (int) pArpOct->load());
+        const int o = arpIndex % octs;
+        for (int i = 0; i < arpHeldCount; ++i) play (std::min (127, arpHeld[i] + 12 * o));
+    }
+    else if (mode == ArpRandom)
+    {
+        arpRng = arpRng * 1664525u + 1013904223u;
+        play (arpSeq[(arpRng >> 8) % (uint32_t) arpSeqLen]);
+    }
+    else play (arpSeq[arpIndex % arpSeqLen]);
+    ++arpIndex;
 }
 
 void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -567,6 +857,7 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         playing = true;
         pos16 = internalPos;
     }
+    clockPlaying = playing;
 
     const bool seqOn = pSeqOn->load() > 0.5f;
     if (! playing && wasRunning)
@@ -583,6 +874,27 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     const double inc16 = bpm / 60.0 * 4.0 / sr;
     const double shuffleOff = pShuffle->load() * 0.33;
     const double gateLen = pSeqGate->load();
+
+    // Arpeggiator: active when switched on and the step sequencer isn't taking the keys
+    const bool arpActive = pArpOn->load() > 0.5f && ! seqRunning;
+    if (arpActive != arpWasActive)
+    {
+        // switching between arp and direct play: let go of everything so no note can hang
+        arpStop();
+        allNotesOff();
+        arpDirty = true;
+        arpWasActive = arpActive;
+    }
+    const double arpBeats = Lists::divisionBeats[juce::jlimit (0, 13, (int) pArpDiv->load())];
+    const double arpInc = bpm / 60.0 / arpBeats / sr;          // arp steps per sample
+    const double arpSwingOff = pArpSwing->load() * 0.33;
+    const double arpGate = juce::jlimit (0.05, 0.98, (double) pArpGate->load());
+    if (arpActive)
+    {
+        // mode / octave changes rebuild the note order at the next step
+        const int modeOct = (int) pArpMode->load() * 8 + (int) pArpOct->load();
+        if (modeOct != lastArpModeOct) { lastArpModeOct = modeOct; arpDirty = true; }
+    }
 
     // --- Voice parameters for this block ---------------------------------
     for (int o = 0; o < 2; ++o)
@@ -624,8 +936,13 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         ls.fade = lfoP[i].fade->load();
         for (int s = 0; s < kLfoSteps; ++s) ls.custom[s] = lfoCustom[i][s].load();
         lfoInc[i] = ls.rateHz / (float) sr;
-        if (synced && hostRunning && ! ls.retrig)
-            globalLfo[i].phase = (float) std::fmod (ppq / beats, 1.0);
+        if (synced && playing && ! ls.retrig)
+        {
+            // locked to the song position (or the RUN clock), so it sits on the grid
+            const double songPpq = hostRunning ? ppq : pos16 * 0.25;
+            const double ph = songPpq / beats;
+            globalLfo[i].phase = (float) (ph - std::floor (ph));
+        }
     }
     vp.numActiveMods = 0;
     vp.lfoUsed = 0;
@@ -638,6 +955,7 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     }
     vp.accent = pAccent->load(); vp.velSens = pVelSens->load();
     vp.warmth = pWarmth->load();
+    vp.drift = pDrift->load();
     const float glide = pGlide->load();
     const float seqGlide = glide > 0.001f ? glide : 0.06f;
 
@@ -658,79 +976,140 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     auto* outR = buffer.getWritePointer (1);
     auto midiIt = midi.cbegin();
 
-    // --- Oversampling: voices run at F x the host rate, then filter back down
-    int factorIndex = juce::jlimit (0, 3, (int) pOversample->load());
-    if (numSamples > oversampleBlock || oversamplers[0] == nullptr) factorIndex = 0;
+    // --- Oversampling: voices run at F x the host rate, then filter back down.
+    // Host blocks bigger than prepared are processed in chunks (never a rate switch mid-song).
+    const int factorIndex = oversamplers[0] == nullptr ? 0 : juce::jlimit (0, 3, (int) pOversample->load());
     const int F = 1 << factorIndex;
     if (F != activeOversample)
     {
         activeOversample = F;
         for (auto& v : voices) v.setSampleRate (sr * F);
         for (auto& o : oversamplers) if (o != nullptr) o->reset();
+        dist.reset();
     }
     juce::dsp::AudioBlock<float> hostBlock (buffer);
-    juce::dsp::AudioBlock<float> osBlock;
-    float* vL = outL;
-    float* vR = outR;
-    if (F > 1)
-    {
-        osBlock = oversamplers[factorIndex - 1]->processSamplesUp (hostBlock.getSubBlock (0, (size_t) numSamples));
-        vL = osBlock.getChannelPointer (0);
-        vR = osBlock.getChannelPointer (1);
-    }
     const float invF = 1.f / (float) F;
+    const bool distOn = pDistOn->load() > 0.5f;
+    const int distType = (int) pDistType->load();
+    const float distDrive = juce::jlimit (0.f, 1.f, pDistDrive->load() + gmod[D_Dist]);
+    const float distMix = pDistMix->load(), distTone = pDistTone->load();
+    const int chunk = std::max (1, oversampleBlock);
 
-    for (int i = 0; i < numSamples; ++i)
+    for (int c0 = 0; c0 < numSamples; c0 += chunk)
     {
-        while (midiIt != midi.cend() && (*midiIt).samplePosition <= i)
+        const int len = std::min (chunk, numSamples - c0);
+        auto sub = hostBlock.getSubBlock ((size_t) c0, (size_t) len);
+        float* vL = outL + c0;
+        float* vR = outR + c0;
+        juce::dsp::AudioBlock<float> osBlock;
+        if (F > 1)
         {
-            handleMidi ((*midiIt).getMessage(), seqRunning);
-            ++midiIt;
+            osBlock = oversamplers[factorIndex - 1]->processSamplesUp (sub);
+            vL = osBlock.getChannelPointer (0);
+            vR = osBlock.getChannelPointer (1);
         }
 
-        if (playing)
+        for (int k = 0; k < len; ++k)
         {
-            const double pos = pos16 + i * inc16;
-            if (pos >= 0.0)
+            const int i = c0 + k;
+            double pos = -1.0;
+            if (playing)
             {
-                const int64_t s = (int64_t) std::floor (pos);
-                const double frac = pos - (double) s;
-                const double off = (s & 1) ? shuffleOff : 0.0;
-                if (s != clockStep) { clockStep = s; stepStarted = false; stepEndDone = false; }
-                if (! stepStarted && frac >= off) { stepStarted = true; seqStepStart ((int) (s % kNumSteps)); }
-                if (stepStarted && ! stepEndDone && frac >= off + gateLen * 0.98)
+                pos = pos16 + i * inc16;
+                if (pos >= 0.0)
+                {
+                    const int64_t st = (int64_t) std::floor (pos);
+                    stepFrac = pos - (double) st;
+                    stepOffset = (st & 1) ? shuffleOff : 0.0;
+                    if (st != clockStep) { clockStep = st; stepStarted = false; stepEndDone = false; }
+                }
+            }
+            if (arpActive)
+            {
+                // arp clock: the song grid when playing, else a free clock from the first key
+                const double ap = playing ? (pos16 + i * inc16) * 0.25 / arpBeats : arpFreePos;
+                const int64_t as = (int64_t) std::floor (ap);
+                arpFrac = ap - (double) as;
+                arpOffset = (as & 1) ? arpSwingOff : 0.0;
+                if (as != arpStep) { arpStep = as; arpStarted = false; arpGateDone = false; }
+            }
+
+            while (midiIt != midi.cend() && (*midiIt).samplePosition <= i)
+            {
+                handleMidi ((*midiIt).getMessage(), seqRunning);
+                ++midiIt;
+            }
+
+            if (playing && pos >= 0.0)
+            {
+                if (! stepStarted && stepFrac >= stepOffset) { stepStarted = true; seqStepStart ((int) (clockStep % kNumSteps)); }
+                if (stepStarted && ! stepEndDone && stepFrac >= stepOffset + gateLen * 0.98)
                 {
                     stepEndDone = true;
                     if (seqOn) seqStepEnd();
                 }
             }
-        }
-
-        for (int j = 0; j < F; ++j)
-        {
-            // Global LFOs tick at the oversampled rate so audio-rate modulation stays smooth
-            for (int l = 0; l < kNumLfos; ++l)
+            if (arpActive)
             {
-                if ((vp.lfoUsed & (1u << l)) == 0) continue;
-                globalLfo[l].advance (lfoInc[l] * invF * std::exp2 (gmod[D_Lfo1Rate + l] * 3.f));
-                float ph = globalLfo[l].phase + vp.lfo[l].phase;
-                ph -= std::floor (ph);
-                gm.lfo[l] = lfoShapeValue (vp.lfo[l].shape, ph, globalLfo[l].sh, vp.lfo[l].custom);
+                if (! arpStarted && arpFrac >= arpOffset)
+                {
+                    // the step starts even with no keys down, so a late key can catch it (see arpKeyDown)
+                    arpStarted = true;
+                    if (arpHeldCount > 0) arpFire();
+                }
+                if (arpStarted && ! arpGateDone && arpFrac >= arpOffset + arpGate * (1.0 - arpOffset))
+                {
+                    arpGateDone = true;
+                    arpReleaseSounding();
+                }
+                if (! playing && arpHeldCount > 0) arpFreePos += arpInc;
             }
 
-            float L = 0.f, R = 0.f;
-            for (int v = 0; v < kNumVoices; ++v)
-                if (voices[v].isActive()) voices[v].process (vp, gm, glide, L, R);
-            if (voices[kNumVoices].isActive()) voices[kNumVoices].process (vp, gm, seqGlide, L, R);
-            vL[i * F + j] = L * 0.5f;
-            vR[i * F + j] = R * 0.5f;
+            for (int j = 0; j < F; ++j)
+            {
+                // Global LFOs tick at the oversampled rate so audio-rate modulation stays smooth
+                for (int l = 0; l < kNumLfos; ++l)
+                {
+                    if ((vp.lfoUsed & (1u << l)) == 0) continue;
+                    globalLfo[l].advance (lfoInc[l] * invF * std::exp2 (gmod[D_Lfo1Rate + l] * 3.f));
+                    float ph = globalLfo[l].phase + vp.lfo[l].phase;
+                    ph -= std::floor (ph);
+                    gm.lfo[l] = lfoShapeValue (vp.lfo[l].shape, ph, globalLfo[l].sh, vp.lfo[l].custom);
+                }
+
+                float L = 0.f, R = 0.f;
+                for (int v = 0; v < kNumVoices; ++v)
+                    if (voices[v].isActive()) voices[v].process (vp, gm, glide, L, R);
+                if (voices[kNumVoices].isActive()) voices[kNumVoices].process (vp, gm, seqGlide, L, R);
+                vL[k * F + j] = L * 0.5f;
+                vR[k * F + j] = R * 0.5f;
+            }
         }
+
+        // distortion runs at the oversampled rate: far less aliasing on the hard types
+        if (distOn)
+            dist.process (vL, vR, len * F, distType, distDrive, distMix, distTone, F, (float) (sr * F));
+        if (F > 1)
+            oversamplers[factorIndex - 1]->processSamplesDown (sub);
     }
 
-    if (F > 1)
+    // pad to the common latency (the same for every oversampling factor)
+    if (latencyTotal > 0 && ! padBuf[0].empty())
     {
-        auto outBlock = hostBlock.getSubBlock (0, (size_t) numSamples);
-        oversamplers[factorIndex - 1]->processSamplesDown (outBlock);
+        const int pad = latencyPad[factorIndex];
+        const int size = (int) padBuf[0].size();
+        for (int i = 0; i < numSamples; ++i)
+        {
+            float* io[2] = { outL + i, outR + i };
+            for (int c = 0; c < 2; ++c)
+            {
+                padBuf[c][(size_t) padPos] = *io[c];
+                int rp = padPos - pad;
+                if (rp < 0) rp += size;
+                *io[c] = padBuf[c][(size_t) rp];
+            }
+            padPos = (padPos + 1) % size;
+        }
     }
 
     while (midiIt != midi.cend())
@@ -748,9 +1127,10 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
 
     // --- FX rack -----------------------------------------------------------
     auto clamp01 = [] (float x) { return juce::jlimit (0.f, 1.f, x); };
-    if (pDistOn->load() > 0.5f)
-        dist.process (outL, outR, numSamples, (int) pDistType->load(),
-                      clamp01 (pDistDrive->load() + gmod[D_Dist]), pDistMix->load());
+    if (pFxfOn->load() > 0.5f)
+        fxFilter.process (outL, outR, numSamples, (int) pFxfType->load(),
+                          pFxfCut->load() * std::exp2 (juce::jlimit (-1.f, 1.f, gmod[D_FxCut]) * 6.f),
+                          pFxfRes->load(), pFxfDrive->load(), pFxfMix->load());
     if (pMfxOn->load() > 0.5f)
         modFx.process (outL, outR, numSamples, (int) pMfxType->load(), pMfxRate->load(), pMfxDepth->load(),
                        pMfxFb->load(), clamp01 (pMfxMix->load() + gmod[D_ModFx]));
@@ -768,6 +1148,8 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     if (pCompOn->load() > 0.5f)
         comp.process (outL, outR, numSamples, (int) pCompMode->load(), pCompThr->load(), pCompRatio->load(),
                       pCompAtt->load(), pCompRel->load(), pCompMakeup->load(), pCompDepth->load());
+    if (pWidOn->load() > 0.5f)
+        width.process (outL, outR, numSamples, pWidAmt->load(), pWidMono->load());
     if (pEqOn->load() > 0.5f)
         eq.process (outL, outR, numSamples, pEqLf->load(), pEqLg->load(), pEqMf->load(), pEqMq->load(),
                     pEqMg->load(), pEqHf->load(), pEqHg->load());

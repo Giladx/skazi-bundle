@@ -2,6 +2,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <cmath>
 #include <vector>
+#include "SynthVoice.h"
 
 namespace Fx
 {
@@ -9,37 +10,125 @@ namespace Fx
     inline float gainToDb (float g) { return 20.f * std::log10 (std::max (g, 1.0e-6f)); }
 
     //==========================================================================
+    // Runs inside the oversampled voice domain (rate = host rate x oversampling), so the hard types
+    // alias far less. Types 0-3 are the original ones (TUBE now also gets the DC blocker).
     class Distortion
     {
     public:
-        void reset() { counter = 0; held[0] = held[1] = 0.f; }
-
-        void process (float* L, float* R, int n, int type, float drive, float mix)
+        void reset()
         {
-            const float g = 1.f + drive * 20.f;
-            const float bits = 16.f - drive * 13.f;
+            counter = 0;
+            for (auto* a : { held, dcX, dcY, toneLp, hp, post }) a[0] = a[1] = 0.f;
+        }
+
+        void process (float* L, float* R, int n, int type, float drive, float mix, float tone, int factor, float rate)
+        {
+            const float d = std::clamp (drive, 0.f, 1.f);
+            const float g = 1.f + d * 20.f;
+            const float bits = 16.f - d * 13.f;
             const float q = std::exp2 (bits - 1.f);
-            const int hold = 1 + (int) (drive * 15.f);
-            const float comp = 1.f / (1.f + drive * 1.2f);
+            const int hold = (1 + (int) (d * 15.f)) * std::max (1, factor);
+            const float comp = 1.f / (1.f + d * 1.2f);
+
+            // new types
+            const float gFuzz = 1.f + d * 10.f + d * d * 80.f;
+            const float gFold = 1.f + d * 14.f;
+            const float gRect = 1.f + d * 12.f;
+            const float gDiode = 1.f + d * 30.f;
+            const float gScream = 1.f + d * 40.f;
+            const float gDestroy = 2.f + d * 30.f + d * d * 300.f;
+            const float qDestroy = std::exp2 (7.f - d * 4.5f);
+            const int holdDestroy = (1 + (int) (d * 6.f)) * std::max (1, factor);
+            const float dcR = 1.f - 6.2831853f * 10.f / rate;
+            const float toneHz = 600.f * std::exp2 (std::clamp (tone, 0.f, 1.f) * 5.06f);
+            const bool toneOn = tone < 0.995f;
+            const float toneA = std::exp (-6.2831853f * std::min (toneHz, rate * 0.45f) / rate);
+            const float hpA = std::exp (-6.2831853f * 400.f / rate);
+            const float postA = std::exp (-6.2831853f * std::min (7000.f, rate * 0.45f) / rate);
+
             for (int i = 0; i < n; ++i)
             {
                 float* io[2] = { L + i, R + i };
+                if (++counter >= (type == DDestroy ? holdDestroy : hold)) counter = 0;
                 for (int c = 0; c < 2; ++c)
                 {
                     const float x = *io[c];
                     float y;
                     switch (type)
                     {
-                        case 0: y = (std::tanh (x * g + 0.25f) - std::tanh (0.25f)) * 0.9f; break;
-                        case 1: y = std::tanh (x * g) * 0.8f; break;
-                        case 2: y = std::clamp (x * g, -1.f, 1.f) * 0.75f; break;
-                        default:
-                            if (c == 0 && ++counter >= hold) counter = 0;
+                        case DTube: y = (std::tanh (x * g + 0.25f) - std::tanh (0.25f)) * 0.9f; break;
+                        case DSoft: y = std::tanh (x * g) * 0.8f; break;
+                        case DHard: y = std::clamp (x * g, -1.f, 1.f) * 0.75f; break;
+                        case DCrush:
                             if (counter == 0) held[c] = std::round (x * q) / q;
                             y = held[c];
                             break;
+                        case DFuzz:
+                        {
+                            // asymmetric, biased: the negative side breaks up harder
+                            const float u = x * gFuzz + 0.15f;
+                            y = u > 0.f ? 1.f - std::exp (-u) : -(1.f - std::exp (u * 1.8f)) * 0.8f;
+                            y *= 0.62f;
+                            break;
+                        }
+                        case DFold:
+                        {
+                            // triangle wavefolder: louder input folds back into more harmonics
+                            float t = (x * gFold + 1.f) * 0.25f;
+                            t -= std::floor (t);
+                            y = (1.f - 4.f * std::abs (t - 0.5f)) * 0.62f;
+                            break;
+                        }
+                        case DRectify:
+                        {
+                            // blend towards full-wave rectification: adds the octave above
+                            const float sh = std::tanh (x * gRect);
+                            y = (sh * (1.f - 0.9f * d) + std::abs (sh) * 1.3f * d) * 0.66f;
+                            break;
+                        }
+                        case DDiode:
+                        {
+                            const float u = x * gDiode;
+                            y = (u >= 0.f ? std::tanh (u) : std::tanh (u * 0.45f) * 1.35f) * 0.6f;
+                            break;
+                        }
+                        case DScream:
+                        {
+                            // mid push (high-pass at 400 Hz added back), hard clip, rounded top end
+                            hp[c] = hp[c] * hpA + x * (1.f - hpA);
+                            const float e = x + (x - hp[c]) * (1.f + d * 4.f);
+                            const float cl = std::clamp (e * gScream, -1.f, 1.f);
+                            post[c] = post[c] * postA + cl * (1.f - postA);
+                            y = post[c] * 0.6f;
+                            break;
+                        }
+                        default:
+                        {
+                            // DESTROY: huge gain, fold, hard clip, few bits, sample-rate crush
+                            if (counter == 0)
+                            {
+                                float t = (x * gDestroy + 1.f) * 0.25f;
+                                t -= std::floor (t);
+                                const float f = std::clamp ((1.f - 4.f * std::abs (t - 0.5f)) * 1.6f, -1.f, 1.f);
+                                held[c] = std::round (f * qDestroy) / qDestroy;
+                            }
+                            y = held[c] * 0.5f;
+                            break;
+                        }
                     }
-                    if (type != 3) y *= comp * 1.6f;
+                    if (type <= DHard) y *= comp * 1.6f;
+                    if (type >= DFuzz || type == DTube)
+                    {
+                        // the asymmetric types make DC: block it
+                        const float b = y - dcX[c] + dcR * dcY[c];
+                        dcX[c] = y; dcY[c] = b;
+                        y = b;
+                    }
+                    if (toneOn)
+                    {
+                        toneLp[c] = toneLp[c] * toneA + y * (1.f - toneA);
+                        y = toneLp[c];
+                    }
                     *io[c] = x * (1.f - mix) + y * mix;
                 }
             }
@@ -47,7 +136,64 @@ namespace Fx
 
     private:
         int counter = 0;
-        float held[2] {};
+        float held[2] {}, dcX[2] {}, dcY[2] {}, toneLp[2] {}, hp[2] {}, post[2] {};
+    };
+
+    //==========================================================================
+    // Global filter on the whole mix (after the distortion), smoothed so LFO sweeps don't zipper
+    class FxFilter
+    {
+    public:
+        void prepare (double sampleRate) { sr = (float) sampleRate; flt.prepare (sr); smoothed = -1.f; }
+        void reset() { flt.reset(); smoothed = -1.f; }
+
+        void process (float* L, float* R, int n, int type, float cutoff, float reso, float drive, float mix)
+        {
+            static const int map[] = { 3, 5, 7, 8, 1 };   // LP 24, HP 24, BP 24, Notch, Acid ladder
+            const int t = map[std::clamp (type, 0, 4)];
+            const float target = std::clamp (cutoff, 20.f, sr * 0.45f);
+            if (smoothed <= 0.f) smoothed = target;
+            const float k = 1.f - std::exp (-1.f / (0.004f * sr));
+            for (int i = 0; i < n; ++i)
+            {
+                smoothed += (target - smoothed) * k;
+                float l = L[i], r = R[i];
+                flt.process (t, smoothed, reso, drive, l, r);
+                L[i] = L[i] * (1.f - mix) + l * mix;
+                R[i] = R[i] * (1.f - mix) + r * mix;
+            }
+        }
+
+    private:
+        VFilter flt;
+        float sr = 44100.f, smoothed = -1.f;
+    };
+
+    //==========================================================================
+    // Stereo width with mono bass: sides below MONO are removed (tight psy / techno low end),
+    // sides above are scaled by WIDTH (0 = mono, 1 = as is, 2 = extra wide)
+    class Width
+    {
+    public:
+        void prepare (double sampleRate) { sr = (float) sampleRate; reset(); }
+        void reset() { lp1 = lp2 = 0.f; }
+
+        void process (float* L, float* R, int n, float width, float monoHz)
+        {
+            const float a = std::exp (-6.2831853f * std::clamp (monoHz, 10.f, 1000.f) / sr);
+            for (int i = 0; i < n; ++i)
+            {
+                const float m = (L[i] + R[i]) * 0.5f, s = (L[i] - R[i]) * 0.5f;
+                lp1 = lp1 * a + s * (1.f - a);
+                lp2 = lp2 * a + lp1 * (1.f - a);
+                const float hs = (s - lp2) * width;
+                L[i] = m + hs;
+                R[i] = m - hs;
+            }
+        }
+
+    private:
+        float sr = 44100.f, lp1 = 0.f, lp2 = 0.f;
     };
 
     //==========================================================================
@@ -79,6 +225,17 @@ namespace Fx
             for (int i = 0; i < n; ++i)
             {
                 phase += inc; if (phase >= 1.f) phase -= 1.f;
+                if (type >= 4)
+                {
+                    // TREMOLO: DEPTH = how far the level dips. AUTO PAN: DEPTH = how far it swings
+                    const float lfo = std::sin (6.2831853f * phase);
+                    float gl, gr;
+                    if (type == 4) gl = gr = 1.f - depth * (0.5f + 0.5f * lfo);
+                    else { const float pan = lfo * depth; gl = 1.f - std::max (0.f, pan); gr = 1.f + std::min (0.f, pan); }
+                    L[i] = L[i] * (1.f - mix) + L[i] * gl * mix;
+                    R[i] = R[i] * (1.f - mix) + R[i] * gr * mix;
+                    continue;
+                }
                 if (type == 3)
                 {
                     const float f = std::min (ringBase * std::exp2 (std::sin (6.2831853f * phase) * fb), sr * 0.45f);

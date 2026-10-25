@@ -596,6 +596,7 @@ public:
         routing = add (new Panel ("ROUTING", Acid::violet, s));
         routingChoice = routing->choice ("flt_routing", { "SERIAL", "PARALLEL", "SPLIT" });
         warmth = routing->knob ("warmth", "ANALOG WARMTH");
+        drift = routing->knob ("drift", "ANALOG DRIFT");
         live.add (routingChoice);
 
         envPanel = add (new Panel ("FILTER ENVELOPE (ENV 2)", Acid::orange, s));
@@ -618,7 +619,8 @@ public:
         }
         routing->setBounds (0, 316, w, getHeight() - 316);
         routingChoice->setBounds (14, 44, w - 28, 36);
-        warmth->setBounds (w - 124, 100, 110, 120);
+        warmth->setBounds (w - 124, 92, 110, 120);
+        drift->setBounds (w - 124, 220, 110, 120);
         envPanel->setBounds (w + 16, 316, w, getHeight() - 316);
         envDisplay->setBounds (14, 42, w - 28, 120);
         Panel::row ({ envKnobs[0], envKnobs[1], envKnobs[2], envKnobs[3] }, 40, 172, 90, 100, 40);
@@ -635,7 +637,7 @@ public:
             "OSC 1 + SUB  ->  FILTER 1          OSC 2 + NOISE  ->  FILTER 2" };
         g.setColour (Acid::dim);
         g.setFont (Acid::font (13.f, false));
-        g.drawFittedText (juce::String (text[mode]) + "\n\nSet a filter to OFF to bypass it. ENV 2 AMT sets how far the filter envelope moves each cutoff.\n\nANALOG WARMTH adds gentle saturation before and after the filters.",
+        g.drawFittedText (juce::String (text[mode]) + "\n\nSet a filter to OFF to bypass it. ENV 2 AMT sets how far the filter envelope moves each cutoff.\n\nANALOG WARMTH adds gentle saturation before and after the filters. ANALOG DRIFT lets every voice wander slightly in pitch and cutoff, like an analog poly.",
                           r, juce::Justification::topLeft, 6);
     }
 
@@ -645,7 +647,7 @@ private:
     struct FilterUi { Panel* panel = nullptr; ChoiceButtons* type = nullptr; std::array<Knob*, 5> knobs {}; } ui[2];
     Panel* routing, *envPanel;
     ChoiceButtons* routingChoice;
-    Knob* warmth;
+    Knob* warmth, *drift;
     EnvDisplay* envDisplay;
     std::array<Knob*, 4> envKnobs {};
     juce::OwnedArray<juce::Component> owned;
@@ -831,17 +833,26 @@ private:
 class FxPage : public Page
 {
 public:
+    // The rack in signal order: DIST -> FX FILTER -> MOD FX -> DELAY -> REVERB -> COMP -> WIDTH -> EQ
     explicit FxPage (AcidanceProcessor& p)
     {
         auto& s = p.apvts;
         dist = add (new Panel ("DISTORTION", Acid::orange, s));
         distOn = dist->toggle ("dist_on", "ON");
-        distType = dist->choice ("dist_type", { "TUBE", "SOFT", "HARD", "CRUSH" });
-        distKnobs = { dist->knob ("dist_drive", "DRIVE"), dist->knob ("dist_mix", "MIX") };
+        distType = dist->choice ("dist_type", Lists::distTypesShort, 2);
+        distType->setTooltip ("TUBE / SOFT / HARD / CRUSH, FUZZ (asymmetric), FOLD (wavefolder), RECT (adds the octave), "
+                              "DIODE, SCREAM (mid-push hard clip), DESTROY (fold + clip + crush, the hardest)");
+        distKnobs = { dist->knob ("dist_drive", "DRIVE"), dist->knob ("dist_tone", "TONE"), dist->knob ("dist_mix", "MIX") };
 
-        mfx = add (new Panel ("CHORUS / PHASER / FLANGER / RING", Acid::cyan, s));
+        fxf = add (new Panel ("FX FILTER", Acid::orange, s));
+        fxfOn = fxf->toggle ("fxf_on", "ON");
+        fxfType = fxf->choice ("fxf_type", { "LP", "HP", "BP", "NOTCH", "ACID" });
+        fxfKnobs = { fxf->knob ("fxf_cut", "CUTOFF"), fxf->knob ("fxf_res", "RESO"),
+                     fxf->knob ("fxf_drive", "DRIVE"), fxf->knob ("fxf_mix", "MIX") };
+
+        mfx = add (new Panel ("MOD FX", Acid::cyan, s));
         mfxOn = mfx->toggle ("mfx_on", "ON");
-        mfxType = mfx->choice ("mfx_type", { "CHORUS", "PHASER", "FLANGER", "RING" });
+        mfxType = mfx->choice ("mfx_type", { "CHORUS", "PHASER", "FLANGER", "RING", "TREMOLO", "PAN" }, 2);
         mfxKnobs = { mfx->knob ("mfx_rate", "RATE"), mfx->knob ("mfx_depth", "DEPTH"),
                      mfx->knob ("mfx_fb", "FEEDBACK"), mfx->knob ("mfx_mix", "MIX") };
 
@@ -863,49 +874,75 @@ public:
         compKnobs = { comp->knob ("comp_thr", "THRESH"), comp->knob ("comp_ratio", "RATIO"), comp->knob ("comp_att", "ATTACK"),
                       comp->knob ("comp_rel", "RELEASE"), comp->knob ("comp_makeup", "MAKEUP"), comp->knob ("comp_depth", "OTT DEPTH") };
 
+        wid = add (new Panel ("WIDTH", Acid::magenta, s));
+        widOn = wid->toggle ("wid_on", "ON");
+        widKnobs = { wid->knob ("wid_amt", "WIDTH"), wid->knob ("wid_mono", "BASS MONO") };
+
         eq = add (new Panel ("MASTER EQ", Acid::yellow, s));
         eqOn = eq->toggle ("eq_on", "ON");
         eqKnobs = { eq->knob ("eq_lf", "LOW FREQ"), eq->knob ("eq_lg", "LOW GAIN", true), eq->knob ("eq_mf", "MID FREQ"),
                     eq->knob ("eq_mq", "MID Q"), eq->knob ("eq_mg", "MID GAIN", true), eq->knob ("eq_hf", "HIGH FREQ"),
                     eq->knob ("eq_hg", "HIGH GAIN", true) };
-        live.add (distType); live.add (mfxType); live.add (compMode);
+        live.add (distType); live.add (fxfType); live.add (mfxType); live.add (compMode);
     }
 
     void resized() override
     {
-        const int w = (getWidth() - 32) / 3, h = (getHeight() - 16) / 2;
-        Panel* panels[] = { dist, mfx, dly, rev, comp, eq };
-        juce::TextButton* ons[] = { distOn, mfxOn, dlyOn, revOn, compOn, eqOn };
-        for (int i = 0; i < 6; ++i)
+        const int w = (getWidth() - 48) / 4, h = (getHeight() - 16) / 2;
+        Panel* panels[] = { dist, fxf, mfx, dly, rev, comp, wid, eq };
+        juce::TextButton* ons[] = { distOn, fxfOn, mfxOn, dlyOn, revOn, compOn, widOn, eqOn };
+        for (int i = 0; i < 8; ++i)
         {
-            panels[i]->setBounds ((i % 3) * (w + 16), (i / 3) * (h + 16), w, h);
+            panels[i]->setBounds ((i % 4) * (w + 16), (i / 4) * (h + 16), w, h);
             ons[i]->setBounds (w - 64, 8, 52, 26);
         }
-        distType->setBounds (14, 46, w - 28, 30);
-        Panel::row ({ distKnobs[0], distKnobs[1] }, 60, 110, 96, 110, 60);
-        mfxType->setBounds (14, 46, w - 28, 30);
-        Panel::row ({ mfxKnobs[0], mfxKnobs[1], mfxKnobs[2], mfxKnobs[3] }, 14, 110, 84, 100, 6);
+        // knobs centred in rows of `cols`
+        auto grid = [w] (std::initializer_list<juce::Component*> items, int cols, int y, int kw, int kh, int gapY = 6)
+        {
+            const int gap = 6, x0 = (w - (cols * kw + (cols - 1) * gap)) / 2;
+            int i = 0;
+            for (auto* c : items)
+            {
+                c->setBounds (x0 + (i % cols) * (kw + gap), y + (i / cols) * (kh + gapY), kw, kh);
+                ++i;
+            }
+        };
+        distType->setBounds (14, 46, w - 28, 64);
+        grid ({ distKnobs[0], distKnobs[1], distKnobs[2] }, 3, 136, 80, 110);
+        fxfType->setBounds (14, 46, w - 28, 30);
+        grid ({ fxfKnobs[0], fxfKnobs[1], fxfKnobs[2], fxfKnobs[3] }, 2, 92, 90, 110, 12);
+        mfxType->setBounds (14, 46, w - 28, 60);
+        grid ({ mfxKnobs[0], mfxKnobs[1], mfxKnobs[2], mfxKnobs[3] }, 2, 116, 90, 104, 8);
         dlySync->setBounds (14, 46, 70, 30);
-        dlyDiv->setBounds (90, 46, 110, 30);
-        dlyPP->setBounds (208, 46, w - 222, 30);
-        Panel::row ({ dlyKnobs[0], dlyKnobs[1], dlyKnobs[2] }, 30, 110, 96, 110, 18);
-        Panel::row ({ revKnobs[0], revKnobs[1], revKnobs[2], revKnobs[3] }, 14, 70, 84, 110, 6);
+        dlyDiv->setBounds (90, 46, w - 104, 30);
+        dlyPP->setBounds (14, 84, w - 28, 28);
+        grid ({ dlyKnobs[0], dlyKnobs[1], dlyKnobs[2] }, 3, 136, 80, 110);
+        grid ({ revKnobs[0], revKnobs[1], revKnobs[2], revKnobs[3] }, 2, 48, 90, 130, 14);
         compMode->setBounds (14, 46, w - 28, 28);
-        Panel::row ({ compKnobs[0], compKnobs[1], compKnobs[2] }, 40, 80, 84, 96, 30);
-        Panel::row ({ compKnobs[3], compKnobs[4], compKnobs[5] }, 40, 180, 84, 96, 30);
-        Panel::row ({ eqKnobs[0], eqKnobs[1], eqKnobs[2], eqKnobs[3] }, 14, 46, 84, 100, 6);
-        Panel::row ({ eqKnobs[4], eqKnobs[5], eqKnobs[6] }, 14, 160, 84, 100, 6);
+        grid ({ compKnobs[0], compKnobs[1], compKnobs[2], compKnobs[3], compKnobs[4], compKnobs[5] }, 3, 88, 80, 110, 14);
+        grid ({ widKnobs[0], widKnobs[1] }, 2, 70, 100, 130);
+        grid ({ eqKnobs[0], eqKnobs[1], eqKnobs[2], eqKnobs[3] }, 4, 50, 60, 110, 14);
+        grid ({ eqKnobs[4], eqKnobs[5], eqKnobs[6] }, 3, 174, 60, 110);
+    }
+
+    void paintOverChildren (juce::Graphics& g) override
+    {
+        // WIDTH caption under its knobs
+        g.setColour (Acid::dim);
+        g.setFont (Acid::font (10.5f, false));
+        g.drawFittedText ("Sides below BASS MONO are folded to mono for a tight low end. WIDTH above 1 spreads the highs.",
+                          wid->getBounds().reduced (18, 0).withTrimmedTop (230).withHeight (60), juce::Justification::centredTop, 3);
     }
 
 private:
     template <class T> T* add (T* c) { owned.add (c); addAndMakeVisible (c); return c; }
-    Panel* dist, *mfx, *dly, *rev, *comp, *eq;
-    juce::TextButton* distOn, *mfxOn, *dlyOn, *revOn, *compOn, *eqOn, *dlySync, *dlyPP;
-    ChoiceButtons* distType, *mfxType, *compMode;
+    Panel* dist, *fxf, *mfx, *dly, *rev, *comp, *wid, *eq;
+    juce::TextButton* distOn, *fxfOn, *mfxOn, *dlyOn, *revOn, *compOn, *widOn, *eqOn, *dlySync, *dlyPP;
+    ChoiceButtons* distType, *fxfType, *mfxType, *compMode;
     juce::ComboBox* dlyDiv;
-    std::array<Knob*, 2> distKnobs {};
-    std::array<Knob*, 4> mfxKnobs {}, revKnobs {};
-    std::array<Knob*, 3> dlyKnobs {};
+    std::array<Knob*, 3> distKnobs {}, dlyKnobs {};
+    std::array<Knob*, 4> fxfKnobs {}, mfxKnobs {}, revKnobs {};
+    std::array<Knob*, 2> widKnobs {};
     std::array<Knob*, 6> compKnobs {};
     std::array<Knob*, 7> eqKnobs {};
     juce::OwnedArray<juce::Component> owned;
@@ -1037,18 +1074,32 @@ public:
         clear->onClick = [this] { proc.seq.clear (pattern->getIndex()); };
         grid = panel->add (new SeqGrid (p, *pattern));
         live.add (pattern); live.add (grid);
+
+        arpPanel = std::make_unique<Panel> ("ARPEGGIATOR", Acid::cyan, p.apvts);
+        addAndMakeVisible (*arpPanel);
+        arpOn = arpPanel->toggle ("arp_on", "ARP ON");
+        arpMode = arpPanel->choice ("arp_mode", Lists::arpModesShort);
+        arpDiv = arpPanel->combo ("arp_div", Lists::divisions);
+        arpKnobs = { arpPanel->knob ("arp_oct", "OCTAVES"), arpPanel->knob ("arp_gate", "GATE"), arpPanel->knob ("arp_swing", "SWING") };
+        live.add (arpMode);
     }
 
     void resized() override
     {
-        panel->setBounds (getLocalBounds());
+        const int arpH = 132;
+        panel->setBounds (getLocalBounds().withTrimmedBottom (arpH + 14));
+        arpPanel->setBounds (0, getHeight() - arpH, getWidth(), arpH);
+        arpOn->setBounds (20, 50, 100, 34);
+        arpMode->setBounds (136, 48, 470, 38);
+        arpDiv->setBounds (622, 52, 110, 30);
+        Panel::row ({ arpKnobs[0], arpKnobs[1], arpKnobs[2] }, 760, 34, 80, 92, 10);
         onButton->setBounds (20, 52, 100, 34);
         pattern->setBounds (136, 52, 330, 34);
         Panel::row ({ knobs[0], knobs[1], knobs[2] }, 490, 36, 74, 80, 6);
         random->setBounds (740, 52, 130, 34);
         arp->setBounds (876, 52, 130, 34);
         clear->setBounds (1012, 52, 130, 34);
-        grid->setBounds (20, 128, getWidth() - 40, getHeight() - 144);
+        grid->setBounds (20, 128, getWidth() - 40, panel->getHeight() - 144);
     }
 
     void paintOverChildren (juce::Graphics& g) override
@@ -1057,12 +1108,17 @@ public:
         g.setFont (Acid::font (11.f, false));
         g.drawText ("Plays only while MIDI notes come in (DAW clip or keyboard), in time with the song or RUN. C3 = no transpose.",
                     200, 10, getWidth() - 220, 22, juce::Justification::centredRight);
+        g.drawText ("Hold a chord: the ARP plays it on the song grid (or from the first key when stopped). SEQ ON takes the keys first.",
+                    200, arpPanel->getY() + 10, getWidth() - 220, 22, juce::Justification::centredRight);
     }
 
 private:
     AcidanceProcessor& proc;
-    std::unique_ptr<Panel> panel;
-    juce::TextButton* onButton, *random, *arp, *clear;
+    std::unique_ptr<Panel> panel, arpPanel;
+    juce::TextButton* onButton, *random, *arp, *clear, *arpOn;
+    ChoiceButtons* arpMode;
+    juce::ComboBox* arpDiv;
+    std::array<Knob*, 3> arpKnobs {};
     ChoiceButtons* pattern;
     std::array<Knob*, 3> knobs {};
     SeqGrid* grid;
@@ -1084,7 +1140,7 @@ public:
         rnd.setColour (juce::TextButton::buttonColourId, juce::Colour (0xffc0281e));
         rnd.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffe0302a));
         rnd.setToggleState (true, juce::dontSendNotification); // always drawn lit, like PANIC
-        rnd.setTooltip ("Random sound with random effects");
+        rnd.setTooltip ("New random sound on every press: oscillators, filters, envelopes, LFOs, effects and arp, level-matched");
         rnd.onClick = [this] { proc.randomizeSound(); repaint(); };
         addAndMakeVisible (rnd);
         startTimerHz (10);
@@ -2131,7 +2187,7 @@ private:
         console = std::make_unique<Console> (proc);
         addAndMakeVisible (*console);
 
-        const char* tabNames[] = { "OSC", "FILTER", "ENV", "LFO", "MATRIX", "FX", "SEQ" };
+        const char* tabNames[] = { "OSC", "FILTER", "ENV", "LFO", "MATRIX", "FX", "SEQ / ARP" };
         const juce::Colour tabCols[] = { Acid::green, Acid::cyan, Acid::orange, Acid::magenta, Acid::violet, Acid::yellow, Acid::green };
         for (int i = 0; i < 7; ++i)
         {

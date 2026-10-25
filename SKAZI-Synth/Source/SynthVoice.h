@@ -116,6 +116,7 @@ struct VoiceParams
     ModSlot mods[kNumModSlots];
     float accent = 0.5f, velSens = 0.5f;
     float warmth = 0.3f;     // pre- and post-filter analog saturation
+    float drift = 0.4f;      // ANALOG: slow per-voice pitch drift + per-note pitch / cutoff spread
     uint32_t lfoUsed = 0xff;  // bit per LFO that any mod slot reads (unused LFOs are skipped)
     int numActiveMods = kNumModSlots;
 };
@@ -319,6 +320,9 @@ public:
             if (accented) accentEnv = 1.f;
             time = 0.f;
             randomVal = rand01() * 2.f - 1.f;
+            // every note comes out a little different, like the voice cards of an analog poly
+            for (auto& d : noteDetune) d = rand01() * 2.f - 1.f;
+            noteCutoff = rand01() * 2.f - 1.f;
         }
     }
 
@@ -372,6 +376,18 @@ public:
             mod[p.mods[k].dst] += src[p.mods[k].src] * p.mods[k].amt;
         for (int i = 0; i < kNumLfos; ++i) lfoRateMod[i] = mod[D_Lfo1Rate + i];
 
+        // Analog drift: each oscillator wanders slowly around its pitch
+        if (p.drift > 0.001f)
+        {
+            if (--driftHold <= 0)
+            {
+                driftHold = (int) (sr * (0.15f + 0.3f * rand01()));
+                for (auto& t : driftTarget) t = rand01() * 2.f - 1.f;
+            }
+            const float k = 1.f - std::exp (-1.f / (0.25f * sr));
+            for (int o = 0; o < 2; ++o) driftNow[o] += (driftTarget[o] - driftNow[o]) * k;
+        }
+
         // Oscillators
         float oL[2] {}, oR[2] {};
         float center[2] { prevCenter[0], prevCenter[1] };
@@ -380,7 +396,8 @@ public:
             const auto& os = p.osc[o];
             if (! os.on) { center[o] = 0.f; continue; }
             const float level = std::clamp (os.level + mod[D_Osc1Level + o], 0.f, 1.f);
-            const float semis = currentNote + os.semis + mod[D_Osc1Pitch + o] * 24.f + g.bend;
+            const float analog = p.drift * (driftNow[o] * 0.06f + noteDetune[o] * 0.03f);   // up to 6 + 3 cents
+            const float semis = currentNote + os.semis + mod[D_Osc1Pitch + o] * 24.f + g.bend + analog;
             const float baseHz = 440.f * std::exp2 ((semis - 69.f) / 12.f);
             const float wt = std::clamp (os.wtPos + mod[D_Osc1Wt + o], 0.f, 1.f);
             const float warpAmt = std::clamp (os.warpAmt + mod[D_Osc1Warp + o], 0.f, 1.f);
@@ -477,7 +494,7 @@ public:
                             + accentEnv * accAmt * 1.5f
                             + fs.key * (currentNote - 60.f) / 12.f
                             + mod[D_Cut1 + f] * 6.f;
-            fc[f] = std::clamp (fs.cutoff * std::exp2 (oct), 20.f, std::min (20000.f, sr * 0.45f));
+            fc[f] = std::clamp (fs.cutoff * std::exp2 (oct + noteCutoff * p.drift * 0.08f), 20.f, std::min (20000.f, sr * 0.45f));
             res[f] = std::clamp (fs.reso + mod[D_Res1 + f] + accAmt * 0.08f, 0.f, 1.f);
         }
 
@@ -538,10 +555,16 @@ private:
             return;
         uniN[o] = n; uniDetune[o] = detune; uniBlend[o] = blend;
         float sumSq = 0.f, w[kMaxUnison];
+        // Supersaw-style spread: a wider, curved detune range, and voices spaced a little unevenly
+        // so the stack shimmers instead of beating in a regular pattern
+        static const float jitter[kMaxUnison] = { 0.f, 0.11f, -0.07f, 0.05f, -0.12f, 0.08f, -0.03f, 0.1f,
+                                                  -0.09f, 0.04f, -0.06f, 0.12f, -0.1f, 0.02f, 0.07f, 0.f };
+        const float range = detune * 0.9f + detune * detune * detune * 0.6f;   // semitones at the outer voices
         for (int u = 0; u < n; ++u)
         {
             const float spread = n == 1 ? 0.f : 2.f * (float) u / (float) (n - 1) - 1.f;
-            uniRatio[o][u] = std::exp2 (spread * detune * 0.5f / 12.f);
+            const float sj = n <= 2 ? spread : std::clamp (spread + jitter[u] * 2.f / (float) n, -1.f, 1.f);
+            uniRatio[o][u] = std::exp2 (sj * range / 12.f);
             const float a = std::abs (spread);
             w[u] = (1.f - 0.7f * blend) * (1.f - a) + (0.3f + 0.7f * blend) * a;
             if (n == 1) w[u] = 1.f;
@@ -600,6 +623,8 @@ private:
     float subPhase = 0.f, noiseVal = 0.f, pk[3] {};
     int noiseHold = 0;
     float currentNote = 60.f, targetNote = 60.f, vel = 1.f, accentEnv = 0.f, time = 0.f, randomVal = 0.f;
+    float driftNow[2] {}, driftTarget[2] {}, noteDetune[2] {}, noteCutoff = 0.f;
+    int driftHold = 0;
     float accentDecay = 0.99985f;
     int note = -1;
     bool accent = false, gliding = false, released = true;

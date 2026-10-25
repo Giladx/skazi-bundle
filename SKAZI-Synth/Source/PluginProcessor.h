@@ -32,7 +32,7 @@ public:
     int getNumPrograms() override;
     int getCurrentProgram() override { return currentProgram; }
     void setCurrentProgram (int index) override;
-    void randomizeSound(); // RND button: random style + random effects
+    void randomizeSound(); // RANDOM button: every section rolled again, loudness-checked
     const juce::String getProgramName (int index) override;
     void changeProgramName (int, const juce::String&) override {}
 
@@ -90,6 +90,13 @@ private:
     bool seqGateOpen() const; // the pattern only plays while a key is held (or RUN in the standalone app)
     int findVoice();
     void resetLfoPhasesIfIdle();
+    bool seqCanCatchUp() const;
+    void arpKeyDown (int note, float vel, bool playing);
+    void arpKeyUp (int note);
+    void arpFire();
+    void arpReleaseSounding();
+    void arpStop();
+    void arpRebuild();
 
     OscP oscP[2];
     FltP fltP[2];
@@ -99,14 +106,17 @@ private:
     std::atomic<float>* pSubWave, *pSubOct, *pSubLevel, *pNoiseType, *pNoiseLevel, *pNoisePitch, *pRouting;
     std::atomic<float>* pMode, *pGlide, *pBend, *pVelSens, *pAccent;
     std::atomic<float>* pSeqOn, *pSeqPattern, *pSeqTranspose, *pSeqGate, *pBpm, *pRun, *pShuffle;
-    std::atomic<float>* pDistOn, *pDistType, *pDistDrive, *pDistMix;
+    std::atomic<float>* pDistOn, *pDistType, *pDistDrive, *pDistMix, *pDistTone;
+    std::atomic<float>* pFxfOn, *pFxfType, *pFxfCut, *pFxfRes, *pFxfDrive, *pFxfMix;
+    std::atomic<float>* pWidOn, *pWidAmt, *pWidMono;
+    std::atomic<float>* pArpOn, *pArpMode, *pArpDiv, *pArpOct, *pArpGate, *pArpSwing;
     std::atomic<float>* pMfxOn, *pMfxType, *pMfxRate, *pMfxDepth, *pMfxFb, *pMfxMix;
     std::atomic<float>* pDlyOn, *pDlySync, *pDlyDiv, *pDlyMs, *pDlyPP, *pDlyFb, *pDlyMix;
     std::atomic<float>* pRevOn, *pRevSize, *pRevDecay, *pRevDamp, *pRevMix;
     std::atomic<float>* pCompOn, *pCompMode, *pCompThr, *pCompRatio, *pCompAtt, *pCompRel, *pCompMakeup, *pCompDepth;
     std::atomic<float>* pEqOn, *pEqLf, *pEqLg, *pEqMf, *pEqMq, *pEqMg, *pEqHf, *pEqHg;
     std::atomic<float>* pVolume, *pPan;
-    std::atomic<float>* pOversample, *pWarmth;
+    std::atomic<float>* pOversample, *pWarmth, *pDrift;
 
     SynthVoice voices[kNumVoices + 1];
     VoiceParams vp;
@@ -122,11 +132,30 @@ private:
     bool wasRunning = false;
     int64_t clockStep = std::numeric_limits<int64_t>::min();
     bool stepStarted = false, stepEndDone = false, lastSlide = false;
+    double stepFrac = 0.0, stepOffset = 0.0;   // where the clock is inside the current 16th
+    bool clockPlaying = false;
     int seqKeyOffset = 0;
     std::array<bool, 128> seqKeys {}; // keys held while the sequencer is armed
     int seqKeyCount = 0;
 
+    // Arpeggiator: held keys are played one step at a time on the song grid (or a free clock)
+    int arpHeld[32] {}, arpOrder[32] {};
+    int arpHeldCount = 0;
+    float arpVel = 1.f;
+    int arpSeq[256] {};
+    int arpSeqLen = 0, arpIndex = 0;
+    bool arpDirty = true, arpWasActive = false;
+    int64_t arpStep = std::numeric_limits<int64_t>::min();
+    bool arpStarted = false, arpGateDone = false;
+    double arpFrac = 0.0, arpOffset = 0.0, arpFreePos = 0.0;
+    int arpSounding[32] {};
+    int arpSoundingCount = 0;
+    uint32_t arpRng = 0x2468aceu;
+    int lastArpModeOct = -1;
+
     Fx::Distortion dist;
+    Fx::FxFilter fxFilter;
+    Fx::Width width;
     Fx::ModFx modFx;
     Fx::Delay delay;
     Fx::Reverb reverb;
@@ -136,6 +165,11 @@ private:
     int currentProgram = 0;
     std::unique_ptr<juce::dsp::Oversampling<float>> oversamplers[3];   // 2x, 4x, 8x
     int oversampleBlock = 0, activeOversample = -1;
+    // Every oversampling factor is padded to the same total delay, reported to the host,
+    // so switching 1x..8x never moves the sound and the DAW compensates it exactly
+    int latencyTotal = 0, latencyPad[4] {};
+    std::vector<float> padBuf[2];
+    int padPos = 0;
     double sr = 44100.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AcidanceProcessor)

@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "")
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "")
 
-project(SKAZI VERSION 1.2.0)
+project(SKAZI VERSION 1.3.0)
 
 if(APPLE)
     set(SKAZI_FORMATS VST3 AU Standalone)
@@ -80,5 +80,18 @@ if(SKAZI_BUILD_TESTS)
     target_sources(SeqGateTest PRIVATE Tools/SeqGateTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/Presets.cpp)
     target_compile_definitions(SeqGateTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="SKAZI")
     target_link_libraries(SeqGateTest PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
+        PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+    # timing: latency reporting, note offsets, LFO and sequencer grid
+    juce_add_console_app(TimingTest PRODUCT_NAME "TimingTest")
+    target_sources(TimingTest PRIVATE Tools/TimingTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/Presets.cpp)
+    target_compile_definitions(TimingTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="SKAZI")
+    target_link_libraries(TimingTest PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
+        PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+
+    # RANDOM covers every section, never silent or clipping; distortion types stay sane
+    juce_add_console_app(RandomTest PRODUCT_NAME "RandomTest")
+    target_sources(RandomTest PRIVATE Tools/RandomTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/Presets.cpp)
+    target_compile_definitions(RandomTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="SKAZI")
+    target_link_libraries(RandomTest PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_opengl
         PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 endif()

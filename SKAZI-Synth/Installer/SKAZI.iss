@@ -1,6 +1,6 @@
 ; Inno Setup script for SKAZI (VST3 + standalone), 64-bit Windows
 #define AppName "SKAZI"
-#define AppVersion "1.2.0"
+#define AppVersion "1.3.0"
 #define AppPublisher "Asher Swissa"
 
 [Setup]
