@@ -300,6 +300,16 @@ void AcidanceProcessor::resetAllParams()
 void AcidanceProcessor::setCurrentProgram (int index)
 {
     index = juce::jlimit (0, Presets::count() - 1, index);
+    // Hosts may switch programs from the audio thread (VST3 program-change parameter). Loading a
+    // preset sets hundreds of parameters, so that work moves to the message thread and this returns
+    // at once; the audio keeps running.
+    if (auto* mm = juce::MessageManager::getInstanceWithoutCreating(); mm != nullptr && ! mm->isThisTheMessageThread())
+    {
+        currentProgram = index;
+        pendingProgram = index;
+        triggerAsyncUpdate();
+        return;
+    }
     currentProgram = index;
     currentPresetName = Presets::name (index);
     currentPresetFolder = Presets::category (index);
@@ -317,7 +327,7 @@ namespace
     // at volume `vol`. RANDOM uses it so a new sound is never silent and never slams the limiter.
     struct Probe { double rms = 0.0; float peak = 0.f; bool ok = true; };
 
-    Probe probeSound (const juce::XmlElement& state, double sampleRate, float vol)
+    Probe probeSound (const juce::XmlElement& state, double sampleRate, float vol, double seconds)
     {
         AcidanceProcessor q;
         q.applyStateXml (state);
@@ -332,7 +342,7 @@ namespace
         q.setPlayConfigDetails (0, 2, sampleRate, block);
         q.prepareToPlay (sampleRate, block);
 
-        const int total = (int) (sampleRate * 1.8), offAt = (int) (sampleRate * 1.4);
+        const int total = (int) (sampleRate * seconds), offAt = (int) (sampleRate * seconds * 0.78);
         juce::AudioBuffer<float> buf (2, block);
         Probe r;
         double sum = 0.0;
@@ -363,6 +373,12 @@ namespace
     }
 }
 
+void AcidanceProcessor::handleAsyncUpdate()
+{
+    const int index = pendingProgram.exchange (-1);
+    if (index >= 0) setCurrentProgram (index);
+}
+
 void AcidanceProcessor::randomizeSound()
 {
     fader.change ([this]
@@ -374,11 +390,23 @@ void AcidanceProcessor::randomizeSound()
         const double rate = sr > 0.0 ? sr : 48000.0;
         juce::String style;
         Probe pr;
-        for (int attempt = 0; attempt < 8; ++attempt)
+        // A time budget keeps the UI responsive: if no audible roll turns up quickly, a random
+        // factory preset (all of them are measured audible) is used instead.
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        bool found = false;
+        for (int attempt = 0; attempt < 8 && ! found; ++attempt)
         {
             style = Presets::randomSound (*this);
-            pr = probeSound (*createStateXml(), rate, probeVol);
-            if (pr.ok && pr.rms > silent) break;
+            pr = probeSound (*createStateXml(), rate, probeVol, attempt == 0 ? 1.8 : 1.2);
+            found = pr.ok && pr.rms > silent;
+            if (! found && juce::Time::getMillisecondCounterHiRes() - t0 > 350.0) break;
+        }
+        if (! found)
+        {
+            const int index = juce::Random::getSystemRandom().nextInt (Presets::count());
+            Presets::apply (index, *this);
+            style = Presets::category (index);
+            pr = probeSound (*createStateXml(), rate, probeVol, 1.2);
         }
         float vol = (float) (probeVol * target / std::max (pr.rms, silent));
         if (pr.peak > 0.f) vol = std::min (vol, probeVol * 0.9f / pr.peak);   // peaks stay under the limiter, with margin

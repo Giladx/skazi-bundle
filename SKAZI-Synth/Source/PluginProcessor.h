@@ -9,7 +9,7 @@
 
 constexpr int kNumVoices = 16;   // poly voices; one extra voice is reserved for the sequencer
 
-class AcidanceProcessor : public juce::AudioProcessor
+class AcidanceProcessor : public juce::AudioProcessor, private juce::AsyncUpdater
 {
 public:
     AcidanceProcessor();
@@ -90,6 +90,8 @@ private:
     bool seqGateOpen() const; // the pattern only plays while a key is held (or RUN in the standalone app)
     int findVoice();
     void resetLfoPhasesIfIdle();
+    void handleAsyncUpdate() override;   // runs a program change the host asked for off the message thread
+    std::atomic<int> pendingProgram { -1 };
     bool seqCanCatchUp() const;
     void arpKeyDown (int note, float vel, bool playing);
     void arpKeyUp (int note);

@@ -9,6 +9,7 @@
 #include "../Source/Presets.h"
 #include <cstdio>
 #include <vector>
+#include <thread>
 
 namespace
 {
@@ -341,6 +342,22 @@ int main()
             check (x, 1000, samplesPer16, "arp: song stopped, free clock starts on the key");
             p.setPlayHead (nullptr);
         }
+    }
+
+    // 7: a program change from the host's audio thread must not load the preset there ----------
+    {
+        AcidanceProcessor p;
+        prepare (p, 512);
+        double ms = 0.0;
+        std::thread t ([&]
+        {
+            const auto t0 = juce::Time::getMillisecondCounterHiRes();
+            p.setCurrentProgram (1200);
+            ms = juce::Time::getMillisecondCounterHiRes() - t0;
+        });
+        t.join();
+        expect (ms < 2.0 && p.getCurrentProgram() == 1200, "program change from the audio thread returns at once",
+                juce::String (ms, 3) + " ms (the preset loads on the message thread)");
     }
 
     std::printf ("\n%s (%d failures)\n", failures == 0 ? "ALL PASSED" : "FAILED", failures);
