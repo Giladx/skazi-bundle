@@ -41,6 +41,7 @@ namespace
         if (name == "ZHUG")           return "Saturator + widener";
         if (name == "BULLY")          return "Wavetable synth: warps, mod matrix, FX";
         if (name == "KICKASS")        return "Kick drum synth + Splice kick browser";
+        if (name == "SALAT")          return "Glitch multi-FX + MAKE A SALAT randomizer";
         return "Plugin";
     }
 
