@@ -2292,15 +2292,10 @@ AcidanceEditor::AcidanceEditor (AcidanceProcessor& p)
     if (auto* c = getConstrainer()) c->setFixedAspectRatio ((double) baseWidth / baseHeight);
     const float scale = juce::jlimit (0.5f, 1.5f, proc.uiScale.load());
     setSize (juce::roundToInt (baseWidth * scale), juce::roundToInt (baseHeight * scale));
-
-    glContext.setComponentPaintingEnabled (true);
-    glContext.setContinuousRepainting (false);
-    glContext.attachTo (*this);
 }
 
 AcidanceEditor::~AcidanceEditor()
 {
-    glContext.detach();
     view.reset();
     setLookAndFeel (nullptr);
 }
@@ -2316,19 +2311,6 @@ void AcidanceEditor::resized()
     proc.uiScale = scale;
     if (view != nullptr)
         view->setTransform (juce::AffineTransform::scale (scale));
-}
-
-// The editor already draws through its own OpenGL context. On Windows, JUCE 8 would also give the
-// host window a Direct2D renderer; mixing the two crashed Cubase on a hybrid Intel / NVIDIA machine
-// (inside Direct3D's WARP fallback). The window's own painting goes back to the plain software
-// renderer, so the editor never touches Direct3D.
-void AcidanceEditor::parentHierarchyChanged()
-{
-   #if JUCE_WINDOWS
-    if (auto* peer = getPeer())
-        if (peer->getAvailableRenderingEngines().size() > 1 && peer->getCurrentRenderingEngine() != 0)
-            peer->setCurrentRenderingEngine (0);
-   #endif
 }
 
 void AcidanceEditor::showPresetBrowser()

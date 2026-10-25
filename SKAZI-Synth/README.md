@@ -16,7 +16,7 @@ SKAZI is a psytrance, acid and wavetable synthesizer. It comes as VST3 for Windo
 - **3,650 factory presets with a tag browser.** 19 root folders: 145 BPM Subs (350), Techno Bass (250), House Bass (200), Deep Bass (200), Acid Leads (250), Hard Leads (300), LFO Madness (300), FM Plucks (200), FX (200), Acid Lines, Bass, Lead, Pad, Pluck, Keys, Sequence, and new in 1.3: Arp Machines (250: psy, trance, acid, FM, techno chord, 1/32 rolling, dub, octave bass, glass and evolving arps), LFO Rhythms (250: trance gates, wobbles, sidechain pumps, stutters, evolving pads, S&H bleeps, tremolo, growls, step-LFO melodies, ring rhythms) and Distorted (150 basses and leads, one for each distortion type). Older folders keep their preset numbers and names, so saved projects load as before. You can search names and tags and filter by folder and multiple tags. Save your own presets with tags; they're stored as XML (`*.skazi`) in `Documents/SKAZI/Presets`. `factory_presets.json` lists the whole library's metadata.
 - **Centre console:** a real-time oscilloscope with light trails, a 3D wavetable view of oscillator 1 that reacts to the audio level, and an FFT spectrum with peak trails.
 - **Five skins:** Hyper (black hardware body, red LCD and LED keys; the default), Robot, Chrome, Vintage and Neon.
-- **Resizable window**, from 50% to 150% at a fixed aspect ratio, rendered through OpenGL. Builds as C++20 on JUCE 8.
+- **Resizable window**, from 50% to 150% at a fixed aspect ratio, drawn with JUCE's standard renderer like the other SKAZI plugins. Builds as C++20 on JUCE 8.
 
 ## Engine
 
