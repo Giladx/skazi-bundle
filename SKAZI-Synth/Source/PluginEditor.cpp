@@ -313,10 +313,43 @@ public:
 };
 
 //==============================================================================
-class WaveDisplay : public juce::Component
+class WaveDisplay : public juce::Component, public juce::FileDragAndDropTarget, public juce::SettableTooltipClient
 {
 public:
-    WaveDisplay (AcidanceProcessor& p, int index, juce::Colour c) : proc (p), o (index), colour (Acid::accentFor (c)) {}
+    WaveDisplay (AcidanceProcessor& p, int index, juce::Colour c) : proc (p), o (index), colour (Acid::accentFor (c))
+    {
+        setTooltip ("Drop a WAV file here (or right-click) to load your own wavetable: it plays as USER");
+    }
+
+    // your own wavetables: drag a WAV / AIFF onto the display, or right-click to pick one
+    bool isInterestedInFileDrag (const juce::StringArray& files) override
+    {
+        return files.size() == 1 && juce::File (files[0]).hasFileExtension ("wav;aif;aiff;flac");
+    }
+    void fileDragEnter (const juce::StringArray&, int, int) override { dragOver = true; repaint(); }
+    void fileDragExit (const juce::StringArray&) override { dragOver = false; repaint(); }
+    void filesDropped (const juce::StringArray& files, int, int) override
+    {
+        dragOver = false;
+        load (juce::File (files[0]));
+    }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (! e.mods.isPopupMenu()) return;
+        juce::PopupMenu m;
+        m.addItem (1, "LOAD WAVETABLE (WAV)...");
+        juce::Component::SafePointer<WaveDisplay> safe (this);
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [safe] (int r)
+        {
+            if (safe == nullptr || r != 1) return;
+            safe->chooser = std::make_unique<juce::FileChooser> ("Load a wavetable", juce::File(), "*.wav;*.aif;*.aiff;*.flac");
+            safe->chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                        [safe] (const juce::FileChooser& fc)
+                                        {
+                                            if (safe != nullptr && fc.getResult().existsAsFile()) safe->load (fc.getResult());
+                                        });
+        });
+    }
 
     void paint (juce::Graphics& g) override
     {
@@ -337,7 +370,9 @@ public:
         }
         const int wave = (int) readParam (proc, pre + "wave");
         const float pos = readParam (proc, pre + "wtpos");
-        const float* table = wave >= 4 ? Wavetables::get().frame (wave - 4, pos) : nullptr;
+        const auto* user = wave >= 8 ? proc.userTable (o) : nullptr;
+        const float* table = wave >= 8 ? (user != nullptr ? user->frame (pos) : Wavetables::get().frame (0, pos))
+                           : wave >= 4 ? Wavetables::get().frame (wave - 4, pos) : nullptr;
 
         juce::Path path;
         const int n = (int) r.getWidth() - 8;
@@ -360,13 +395,40 @@ public:
         Acid::glowStroke (g, path, colour, 1.8f);
         g.setColour (Acid::screenDim);
         g.setFont (Acid::font (10.f));
-        g.drawText (Lists::oscWaves[wave].toUpperCase(), r.reduced (6.f, 4.f), juce::Justification::topLeft);
+        const auto label = wave >= 8 ? (user != nullptr ? "USER: " + proc.userWavetableName[o].toUpperCase() : juce::String ("USER: DROP A WAV HERE"))
+                                     : Lists::oscWaves[wave].toUpperCase();
+        g.drawText (label, r.reduced (6.f, 4.f), juce::Justification::topLeft);
+        if (dragOver)
+        {
+            g.setColour (colour.withAlpha (0.25f));
+            g.fillRoundedRectangle (r, 6.f);
+            g.setColour (colour);
+            g.drawRoundedRectangle (r.reduced (1.f), 6.f, 2.f);
+            g.setFont (Acid::font (13.f));
+            g.drawText ("DROP TO LOAD WAVETABLE", r, juce::Justification::centred);
+        }
+        if (message.isNotEmpty())
+        {
+            g.setColour (Acid::panicRed);
+            g.setFont (Acid::font (11.f));
+            g.drawText (message, r.reduced (6.f, 4.f), juce::Justification::bottomLeft);
+        }
     }
 
 private:
+    void load (const juce::File& f)
+    {
+        juce::String err;
+        message = proc.loadUserWavetable (o, f, &err) ? juce::String() : err;
+        repaint();
+    }
+
     AcidanceProcessor& proc;
     int o;
     juce::Colour colour;
+    bool dragOver = false;
+    juce::String message;
+    std::unique_ptr<juce::FileChooser> chooser;
 };
 
 //==============================================================================
@@ -521,7 +583,14 @@ public:
             u.lock = panel->toggle (pre + "lock", "PHASE LOCK");
             u.lock->setTooltip ("Restart the oscillator at exactly 0 degrees on every note");
             u.warp = panel->choice (pre + "warp", { "NO WARP", "FM", "AM", "RING" });
-            live.add (u.wave); live.add (u.display); live.add (u.warp);
+            u.shape = panel->choice (pre + "shape", { "OFF", "FOLD", "PWM", "ASYM" });
+            u.shape->setTooltip ("Shapes the wave: FOLD folds it back on itself, PWM squeezes the cycle, ASYM adds even harmonics");
+            u.shapeAmt = panel->knob (pre + "shapeamt", "SHAPE");
+            u.wtStep = panel->toggle (pre + "wtstep", "WT STEP");
+            u.wtStep->setTooltip ("Wavetable position jumps from frame to frame instead of morphing: 8-bit / chip sounds");
+            u.uniMode = panel->choice (pre + "unimode", { "UNI", "PWR", "MIN", "MAJ" });
+            u.uniMode->setTooltip ("Unison mode: classic detune, or the unison voices stacked as a power, minor or major chord");
+            live.add (u.wave); live.add (u.display); live.add (u.warp); live.add (u.shape); live.add (u.uniMode);
         }
 
         sub = add (new Panel ("SUB", Acid::orange, s));
@@ -558,6 +627,10 @@ public:
             u.rand->setBounds (14, 298, 112, 30);
             u.lock->setBounds (130, 298, 112, 30);
             u.warp->setBounds (250, 298, w - 264, 30);
+            u.shape->setBounds (356, 166, w - 370, 28);
+            u.shapeAmt->setBounds (356, 198, 64, 84);
+            u.wtStep->setBounds (426, 204, w - 440, 30);
+            u.uniMode->setBounds (426, 244, w - 440, 30);
         }
         const int y = 376, h = getHeight() - y;
         sub->setBounds (0, y, 300, h);
@@ -580,7 +653,9 @@ private:
     {
         Panel* panel = nullptr;
         juce::TextButton* on = nullptr, *rand = nullptr, *lock = nullptr;
-        ChoiceButtons* wave = nullptr, *warp = nullptr;
+        ChoiceButtons* wave = nullptr, *warp = nullptr, *shape = nullptr, *uniMode = nullptr;
+        Knob* shapeAmt = nullptr;
+        juce::TextButton* wtStep = nullptr;
         WaveDisplay* display = nullptr;
         std::array<Knob*, 5> knobs1 {}, knobs2 {};
     } ui[2];

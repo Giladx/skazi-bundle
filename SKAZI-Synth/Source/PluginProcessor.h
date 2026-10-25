@@ -37,6 +37,12 @@ public:
     // A/B MORPH: snapshots of every sound parameter; MORPH blends them (message thread stores them)
     void storeMorph (int which);          // 0 = A, 1 = B: the current sound
     bool hasMorph (int which) const { return morphValid[which].load(); }
+
+    // WAV wavetables: one per oscillator. Message thread; the audio thread picks the new table up next block.
+    bool loadUserWavetable (int osc, const juce::File& file, juce::String* error = nullptr);
+    bool setUserWavetable (int osc, std::vector<float> frames, const juce::String& name);   // kFrames x N samples
+    const Wavetables::UserTable* userTable (int osc) const;
+    juce::String userWavetableName[2];
     const juce::String getProgramName (int index) override;
     void changeProgramName (int, const juce::String&) override {}
 
@@ -77,7 +83,7 @@ public:
     std::atomic<int> scopeWrite { 0 };
 
 private:
-    struct OscP { std::atomic<float>* on, *wave, *wtpos, *oct, *semi, *fine, *level, *uni, *detune, *blend, *phase, *rphase, *warp, *warpamt, *lock; };
+    struct OscP { std::atomic<float>* on, *wave, *wtpos, *oct, *semi, *fine, *level, *uni, *detune, *blend, *phase, *rphase, *warp, *warpamt, *lock, *shape, *shapeamt, *wtstep, *unimode; };
     struct FltP { std::atomic<float>* type, *cutoff, *reso, *drive, *key, *env; };
     struct EnvP { std::atomic<float>* a, *d, *s, *r; };
     struct LfoP { std::atomic<float>* shape, *rate, *sync, *div, *trig, *phase, *fade; };
@@ -138,6 +144,10 @@ private:
     void refreshShadow();
     std::atomic<float>* morphOnRaw = nullptr, *morphRaw = nullptr;   // the real parameters, not the shadow
     double duckFreePos = 0.0;
+    std::unique_ptr<Wavetables::UserTable> userTab[2][2];   // double-buffered per oscillator
+    std::atomic<int> userActive[2] { -1, -1 };
+    std::vector<float> userFrames[2];                         // what gets saved with the project
+    juce::uint32 lastUserLoad[2] {};
 
     SynthVoice voices[kNumVoices + 1];
     VoiceParams vp;

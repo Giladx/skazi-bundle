@@ -2,8 +2,10 @@
 //   step locks, kick duck, A/B morph (and that it survives a save), macros, voice cards
 #include "../Source/PluginProcessor.h"
 #include "../Source/Presets.h"
+#include <juce_audio_formats/juce_audio_formats.h>
 #include <cstdio>
 #include <vector>
+#include <functional>
 
 namespace
 {
@@ -203,6 +205,111 @@ int main()
         juce::String r;
         for (int m = 0; m < kNumMacros; ++m) r << "M" << (m + 1) << " " << changed[m] << "/10  ";
         expect (changed[0] >= 9 && changed[1] >= 7 && changed[2] >= 9 && changed[3] >= 9, "factory presets: each macro changes the sound", r);
+    }
+
+    // 7. oscillator shaper, wavetable step mode, unison chords
+    {
+        auto play = [] (std::function<void (AcidanceProcessor&)> set)
+        {
+            AcidanceProcessor p;
+            basePatch (p);
+            p.setParam ("flt1_type", 0.f);
+            set (p);
+            prepare (p);
+            return render (p, 24000, { note (100, 48) }).l;
+        };
+        const auto plain = play ([] (AcidanceProcessor&) {});
+        const double b0 = bright (plain, 4000, 23000);
+        juce::String r;
+        bool ok = true;
+        const char* names[] = { "FOLD", "PWM", "ASYM" };
+        for (int sh = 1; sh <= 3; ++sh)
+        {
+            const auto x = play ([sh] (AcidanceProcessor& p) { p.setParam ("osc1_wave", 3.f); p.setParam ("osc1_shape", (float) sh); p.setParam ("osc1_shapeamt", 0.8f); });
+            const auto tri = play ([] (AcidanceProcessor& p) { p.setParam ("osc1_wave", 3.f); });
+            const double d = bright (x, 4000, 23000) / bright (tri, 4000, 23000);
+            r << names[sh - 1] << " x" << juce::String (d, 2) << "  ";
+            if (std::abs (d - 1.0) < 0.05) ok = false;
+        }
+        juce::ignoreUnused (b0);
+        expect (ok, "osc shaper: FOLD / PWM / ASYM change the triangle's harmonics", r);
+
+        // WT STEP: two positions inside one frame sound identical with STEP on, different with it off
+        auto at = [&] (float pos, bool step)
+        {
+            return play ([pos, step] (AcidanceProcessor& p)
+            {
+                p.setParam ("osc1_wave", 7.f); p.setParam ("osc1_wtpos", pos); p.setParam ("osc1_wtstep", step ? 1.f : 0.f);
+            });
+        };
+        auto rel = [] (const std::vector<float>& a, const std::vector<float>& b)
+        {
+            double d = 0.0, e = 0.0;
+            for (size_t i = 4000; i < 23000; ++i) { d += std::pow (a[i] - b[i], 2.0); e += std::pow (a[i], 2.0); }
+            return std::sqrt (d / std::max (1.0e-12, e));
+        };
+        const double off = rel (at (0.51f, false), at (0.55f, false)), on = rel (at (0.51f, true), at (0.55f, true));
+        expect (on < 1.0e-4 && off > 0.005, "WT STEP: positions snap to whole frames",
+                "STEP off " + juce::String (off * 100.0, 2) + "% apart, on " + juce::String (on * 100.0, 4) + "%");
+
+        // CHORD unison: 3 voices, MAJ: the spectrum gets energy at the major third / fifth
+        const auto classic = play ([] (AcidanceProcessor& p) { p.setParam ("osc1_wave", 0.f); p.setParam ("osc1_uni", 3.f); p.setParam ("osc1_detune", 0.f); });
+        const auto major = play ([] (AcidanceProcessor& p) { p.setParam ("osc1_wave", 0.f); p.setParam ("osc1_uni", 3.f); p.setParam ("osc1_detune", 0.f); p.setParam ("osc1_unimode", 3.f); });
+        expect (bright (major, 4000, 23000) > bright (classic, 4000, 23000) * 1.15, "unison MAJ: the voices play a chord, not one note",
+                "brightness " + juce::String (bright (classic, 4000, 23000), 4) + " -> " + juce::String (bright (major, 4000, 23000), 4));
+    }
+
+    // 8. your own wavetable from a WAV: frame 1 a sine ... frame 4 a bright saw
+    {
+        auto tmp = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("skazi_wt_test.wav");
+        auto writeWav = [] (const juce::File& f, const std::vector<float>& x)
+        {
+            f.deleteFile();
+            juce::WavAudioFormat wav;
+            std::unique_ptr<juce::OutputStream> os (f.createOutputStream().release());
+            auto w = wav.createWriterFor (os, juce::AudioFormatWriterOptions().withSampleRate (48000.0).withNumChannels (1).withBitsPerSample (24));
+            juce::AudioBuffer<float> b (1, (int) x.size());
+            for (size_t i = 0; i < x.size(); ++i) b.setSample (0, (int) i, x[i]);
+            if (w != nullptr) w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
+        };
+        std::vector<float> x (4 * 2048);
+        for (int f = 0; f < 4; ++f)
+            for (int i = 0; i < 2048; ++i)
+            {
+                float v = 0.f;
+                for (int h = 1; h <= 1 + f * 20; ++h) v += std::sin (6.2831853f * h * i / 2048.f) / h;
+                x[(size_t) (f * 2048 + i)] = v * 0.5f;
+            }
+        writeWav (tmp, x);
+        AcidanceProcessor p;
+        basePatch (p);
+        p.setParam ("flt1_type", 0.f);
+        juce::String err;
+        const bool ok = p.loadUserWavetable (0, tmp, &err);
+        expect (ok && (int) p.apvts.getRawParameterValue ("osc1_wave")->load() == 8, "user wavetable: a WAV loads and the osc switches to USER",
+                ok ? "name " + p.userWavetableName[0] : err);
+        prepare (p);
+        double b[2];
+        for (int k2 = 0; k2 < 2; ++k2)
+        {
+            p.setParam ("osc1_wtpos", (float) k2);
+            p.panicRequest = true;
+            b[k2] = bright (render (p, 24000, { note (100, 48) }).l, 4000, 23000);
+        }
+        expect (b[1] > b[0] * 3.0, "user wavetable: position sweeps from the sine frame to the saw frame",
+                "brightness " + juce::String (b[0], 4) + " -> " + juce::String (b[1], 4));
+        juce::MemoryBlock mb;
+        p.getStateInformation (mb);
+        AcidanceProcessor q;
+        q.setStateInformation (mb.getData(), (int) mb.getSize());
+        expect (q.userTable (0) != nullptr && q.userWavetableName[0] == p.userWavetableName[0]
+                    && (int) q.apvts.getRawParameterValue ("osc1_wave")->load() == 8,
+                "user wavetable: saved inside the project", juce::String ((int) mb.getSize() / 1024) + " kB state");
+        std::vector<float> cyc (600);
+        for (size_t i = 0; i < cyc.size(); ++i) cyc[i] = i < 300 ? 0.6f : -0.6f;
+        writeWav (tmp, cyc);
+        expect (p.loadUserWavetable (1, tmp, &err), "user wavetable: a short single-cycle file loads too", "600 samples -> 2048");
+        tmp.deleteFile();
     }
 
     std::printf ("\n%s (%d failures)\n", failures == 0 ? "ALL PASSED" : "FAILED", failures);

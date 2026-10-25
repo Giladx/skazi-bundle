@@ -95,6 +95,10 @@ struct OscSettings
     bool phaseLock = false;   // reset to exactly 0 degrees on every note-on
     int warp = 0;
     float warpAmt = 0.f;
+    int shape = 0;            // 0 off, 1 wavefolder, 2 PWM (squeezes the cycle), 3 asymmetry
+    float shapeAmt = 0.5f;
+    bool wtStep = false;      // wavetable position jumps frame to frame (no morphing)
+    int uniMode = 0;          // 0 classic detune, 1-3: unison voices stacked as power / minor / major chords
 };
 
 struct FilterSettings { int type = 1; float cutoff = 1000.f, reso = 0.3f, drive = 0.f, key = 0.3f, env = 0.4f; };
@@ -117,8 +121,10 @@ struct VoiceParams
     float accent = 0.5f, velSens = 0.5f;
     float warmth = 0.3f;     // pre- and post-filter analog saturation
     float drift = 0.4f;      // ANALOG: slow per-voice pitch drift + per-note pitch / cutoff spread
+    bool poly = true;        // pan spread only between poly voices: a mono / sequenced bass stays centred
     float spread = 0.35f;    // VOICE SPREAD: each voice card's fixed offsets in cutoff, envelopes, tuning, pan
     uint32_t lfoUsed = 0xff;  // bit per LFO that any mod slot reads (unused LFOs are skipped)
+    const Wavetables::UserTable* user[2] { nullptr, nullptr };   // the WAV wavetable loaded into each oscillator
     int numActiveMods = kNumModSlots;
 };
 
@@ -418,11 +424,14 @@ public:
                                + p.spread * cardTune * 0.05f;                                // voice card tuning
             const float semis = currentNote + os.semis + mod[D_Osc1Pitch + o] * 24.f + g.bend + analog;
             const float baseHz = 440.f * std::exp2 ((semis - 69.f) / 12.f);
-            const float wt = std::clamp (os.wtPos + mod[D_Osc1Wt + o], 0.f, 1.f);
+            float wt = std::clamp (os.wtPos + mod[D_Osc1Wt + o], 0.f, 1.f);
+            if (os.wtStep) wt = std::round (wt * (Wavetables::kFrames - 1)) / (float) (Wavetables::kFrames - 1);
+            const float shapeAmt = std::clamp (os.shapeAmt + mod[D_Shape1 + o], 0.f, 1.f);
+            const float pw = 0.5f - shapeAmt * 0.45f;   // PWM: the first half of the cycle squeezed into pw
             const float warpAmt = std::clamp (os.warpAmt + mod[D_Osc1Warp + o], 0.f, 1.f);
             const float srcSig = o == 0 ? prevCenter[1] : center[0];
             const int n = std::clamp (os.uni, 1, kMaxUnison);
-            updateUnison (o, n, std::clamp (os.detune + mod[D_Detune], 0.f, 1.f), os.blend);
+            updateUnison (o, n, std::clamp (os.detune + mod[D_Detune], 0.f, 1.f), os.blend, os.uniMode);
             const int c = n / 2;
 
             // Advance all unison phases in one tight (auto-vectorisable) loop
@@ -437,7 +446,12 @@ public:
             const float fmOffset = fm ? warpAmt * srcSig * 1.5f : 0.f;
             const bool table = os.wave >= 4;
             Wavetables::Reader rd;
-            if (table) rd = Wavetables::get().reader (os.wave - 4, wt, std::min (0.45f, baseDt * uniRatio[o][n - 1]));
+            if (table)
+            {
+                const float maxDt = std::min (0.45f, baseDt * uniRatio[o][n - 1]);
+                if (os.wave >= 8 && p.user[o] != nullptr) rd = p.user[o]->reader (wt, maxDt);
+                else rd = Wavetables::get().reader (os.wave >= 8 ? 0 : os.wave - 4, wt, maxDt);   // USER with nothing loaded: BASIC
+            }
 
             float sL = 0.f, sR = 0.f;
             for (int u = 0; u < n; ++u)
@@ -448,7 +462,17 @@ public:
                     phm += fmOffset;
                     phm -= std::floor (phm);
                 }
-                const float s = table ? rd.read (phm) : oscSample (os.wave, wt, phm, std::min (0.45f, baseDt * uniRatio[o][u]));
+                if (os.shape == 2) phm = phm < pw ? phm * 0.5f / pw : 0.5f + (phm - pw) * 0.5f / (1.f - pw);
+                float s = table ? rd.read (phm) : oscSample (os.wave, wt, phm, std::min (0.45f, baseDt * uniRatio[o][u]));
+                if (os.shape == 1)
+                {
+                    // wavefolder: the louder the shape, the more the wave folds back on itself
+                    float t = (s * (1.f + shapeAmt * 5.f) + 1.f) * 0.25f;
+                    t -= std::floor (t);
+                    s = 1.f - 4.f * std::abs (t - 0.5f);
+                }
+                else if (os.shape == 3)
+                    s = s + shapeAmt * (0.7f * s * s - 0.23f);   // asymmetry: adds the even harmonics
                 if (u == c) center[o] = s;
                 sL += s * uniGainL[o][u];
                 sR += s * uniGainR[o][u];
@@ -557,7 +581,7 @@ public:
 
         const float velGain = 1.f - p.velSens * (1.f - vel);
         const float amp = envOut[0] * velGain * (1.f + accAmt * 0.4f) * std::clamp (1.f + mod[D_Amp], 0.f, 2.f);
-        const float pan = std::clamp (mod[D_Pan] + cardPan * p.spread * 0.25f, -1.f, 1.f);
+        const float pan = std::clamp (mod[D_Pan] + (p.poly ? cardPan * p.spread * 0.25f : 0.f), -1.f, 1.f);
         outL += L * amp * std::min (1.f, 1.f - pan);
         outR += R * amp * std::min (1.f, 1.f + pan);
     }
@@ -570,11 +594,13 @@ private:
         return fastTanh (g * (x + 0.08f * w * x * x)) / g;
     }
 
-    void updateUnison (int o, int n, float detune, float blend)
+    void updateUnison (int o, int n, float detune, float blend, int mode)
     {
-        if (n == uniN[o] && std::abs (detune - uniDetune[o]) < 1.0e-4f && std::abs (blend - uniBlend[o]) < 1.0e-4f)
+        if (n == uniN[o] && mode == uniMode[o] && std::abs (detune - uniDetune[o]) < 1.0e-4f && std::abs (blend - uniBlend[o]) < 1.0e-4f)
             return;
-        uniN[o] = n; uniDetune[o] = detune; uniBlend[o] = blend;
+        uniN[o] = n; uniDetune[o] = detune; uniBlend[o] = blend; uniMode[o] = mode;
+        // CHORD unison: voices spread over chord notes (root at the centre), detune still applies
+        static const int chords[3][6] = { { 0, 7, 12, 19, 24, -12 }, { 0, 3, 7, 12, 15, -5 }, { 0, 4, 7, 12, 16, -5 } };
         float sumSq = 0.f, w[kMaxUnison];
         // Supersaw-style spread: a wider, curved detune range, and voices spaced a little unevenly
         // so the stack shimmers instead of beating in a regular pattern
@@ -586,6 +612,11 @@ private:
             const float spread = n == 1 ? 0.f : 2.f * (float) u / (float) (n - 1) - 1.f;
             const float sj = n <= 2 ? spread : std::clamp (spread + jitter[u] * 2.f / (float) n, -1.f, 1.f);
             uniRatio[o][u] = std::exp2 (sj * range / 12.f);
+            if (mode > 0 && n > 1)
+            {
+                const int rank = std::abs (u - (n - 1) / 2);   // centre voice = root, outwards up the chord
+                uniRatio[o][u] *= std::exp2 ((float) chords[std::clamp (mode, 1, 3) - 1][rank % 6] / 12.f);
+            }
             const float a = std::abs (spread);
             w[u] = (1.f - 0.7f * blend) * (1.f - a) + (0.3f + 0.7f * blend) * a;
             if (n == 1) w[u] = 1.f;
@@ -638,7 +669,7 @@ private:
     VFilter flt[2];
     float phase[2][kMaxUnison] {};
     float uniRatio[2][kMaxUnison] {}, uniGainL[2][kMaxUnison] {}, uniGainR[2][kMaxUnison] {};
-    int uniN[2] { -1, -1 };
+    int uniN[2] { -1, -1 }, uniMode[2] { 0, 0 };
     float uniDetune[2] { -1.f, -1.f }, uniBlend[2] { -1.f, -1.f };
     float prevCenter[2] {};
     float subPhase = 0.f, noiseVal = 0.f, pk[3] {};

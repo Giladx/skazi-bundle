@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include <juce_audio_formats/juce_audio_formats.h>
 #include "PluginEditor.h"
 #include "Presets.h"
 
@@ -200,6 +201,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout AcidanceProcessor::createLay
     addF (l, "arp_swing", "Arp Swing", 0.f, 1.f, 0.f);
     addF (l, "drift", "Analog Drift", 0.f, 1.f, 0.4f);
     addF (l, "spread", "Voice Spread", 0.f, 1.f, 0.35f);
+    for (int o = 0; o < 2; ++o)
+    {
+        const juce::String p = "osc" + juce::String (o + 1) + "_";
+        const juce::String n = "Osc " + juce::String (o + 1) + " ";
+        addC (l, p + "shape", n + "Shape", Lists::oscShapes, 0);
+        addF (l, p + "shapeamt", n + "Shape Amount", 0.f, 1.f, 0.5f);
+        addB (l, p + "wtstep", n + "WT Step", false);
+        addC (l, p + "unimode", n + "Unison Mode", Lists::uniModes, 0);
+    }
     for (int m = 0; m < kNumMacros; ++m)
         addF (l, "macro" + juce::String (m + 1), "Macro " + juce::String (m + 1), 0.f, 1.f, 0.f);
     addB (l, "morph_on", "Morph On", false);
@@ -241,7 +251,8 @@ AcidanceProcessor::AcidanceProcessor()
         const juce::String p = "osc" + juce::String (o + 1) + "_";
         oscP[o] = { get (p + "on"), get (p + "wave"), get (p + "wtpos"), get (p + "oct"), get (p + "semi"), get (p + "fine"),
                     get (p + "level"), get (p + "uni"), get (p + "detune"), get (p + "blend"), get (p + "phase"),
-                    get (p + "rphase"), get (p + "warp"), get (p + "warpamt"), get (p + "lock") };
+                    get (p + "rphase"), get (p + "warp"), get (p + "warpamt"), get (p + "lock"),
+                    get (p + "shape"), get (p + "shapeamt"), get (p + "wtstep"), get (p + "unimode") };
     }
     for (int f = 0; f < 2; ++f)
     {
@@ -881,6 +892,70 @@ void AcidanceProcessor::arpFire()
     ++arpIndex;
 }
 
+//==============================================================================
+// WAV wavetables: the file is cut into 2048-sample frames (Serum / Pigments style); 16 of them,
+// spread evenly through the file, become the table. A short single-cycle file is stretched to 2048.
+bool AcidanceProcessor::loadUserWavetable (int osc, const juce::File& file, juce::String* error)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (file));
+    if (reader == nullptr) { if (error) *error = "Not an audio file SKAZI can read"; return false; }
+    const int len = (int) std::min<juce::int64> (reader->lengthInSamples, 2048 * 256);
+    if (len < 64) { if (error) *error = "The file is too short"; return false; }
+    juce::AudioBuffer<float> in ((int) reader->numChannels, len);
+    reader->read (&in, 0, len, 0, true, true);
+    std::vector<float> mono ((size_t) len);
+    for (int c = 0; c < in.getNumChannels(); ++c)
+        for (int i = 0; i < len; ++i) mono[(size_t) i] += in.getSample (c, i) / (float) in.getNumChannels();
+
+    constexpr int N = Wavetables::N, F = Wavetables::kFrames;
+    std::vector<float> frames ((size_t) F * N);
+    const int srcFrames = len >= N ? len / N : 0;
+    for (int f = 0; f < F; ++f)
+    {
+        float* dst = frames.data() + (size_t) f * N;
+        if (srcFrames == 0)
+            for (int i = 0; i < N; ++i)   // one short cycle: stretch it
+            {
+                const float x = (float) i * (float) len / (float) N;
+                const int a = (int) x, b = (a + 1) % len;
+                dst[i] = mono[(size_t) a] + (mono[(size_t) b] - mono[(size_t) a]) * (x - (float) a);
+            }
+        else
+        {
+            const int src = srcFrames == 1 ? 0 : (int) std::round ((float) f * (float) (srcFrames - 1) / (float) (F - 1));
+            for (int i = 0; i < N; ++i) dst[i] = mono[(size_t) (src * N + i)];
+        }
+    }
+    return setUserWavetable (osc, std::move (frames), file.getFileNameWithoutExtension());
+}
+
+bool AcidanceProcessor::setUserWavetable (int osc, std::vector<float> frames, const juce::String& name)
+{
+    osc = juce::jlimit (0, 1, osc);
+    if ((int) frames.size() != Wavetables::kFrames * Wavetables::N) return false;
+    // the audio thread may still read the previously active buffer during this block
+    const auto now = juce::Time::getMillisecondCounter();
+    if (userActive[osc].load() >= 0 && now - lastUserLoad[osc] < 250) juce::Thread::sleep (250);
+    lastUserLoad[osc] = juce::Time::getMillisecondCounter();
+    const int next = userActive[osc].load() == 0 ? 1 : 0;
+    if (userTab[osc][next] == nullptr) userTab[osc][next] = std::make_unique<Wavetables::UserTable>();
+    userTab[osc][next]->build (frames);
+    userFrames[osc] = std::move (frames);
+    userWavetableName[osc] = name;
+    userActive[osc] = next;
+    setParam ("osc" + juce::String (osc + 1) + "_wave", 8.f);
+    ++programChanges;
+    return true;
+}
+
+const Wavetables::UserTable* AcidanceProcessor::userTable (int osc) const
+{
+    const int a = userActive[juce::jlimit (0, 1, osc)].load();
+    return a >= 0 ? userTab[osc][a].get() : nullptr;
+}
+
 void AcidanceProcessor::storeMorph (int which)
 {
     auto& snap = which == 0 ? morphA : morphB;
@@ -999,6 +1074,10 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         os.phaseLock = p.lock->load() > 0.5f;
         os.warp = (int) p.warp->load();
         os.warpAmt = p.warpamt->load();
+        os.shape = (int) p.shape->load();
+        os.shapeAmt = p.shapeamt->load();
+        os.wtStep = p.wtstep->load() > 0.5f;
+        os.uniMode = (int) p.unimode->load();
     }
     vp.subWave = (int) pSubWave->load(); vp.subOct = (int) pSubOct->load(); vp.subLevel = pSubLevel->load();
     vp.noiseType = (int) pNoiseType->load(); vp.noiseLevel = pNoiseLevel->load(); vp.noisePitch = pNoisePitch->load();
@@ -1042,6 +1121,8 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     vp.warmth = pWarmth->load();
     vp.drift = pDrift->load();
     vp.spread = pSpread->load();
+    vp.poly = (int) pMode->load() == 0;
+    for (int o = 0; o < 2; ++o) vp.user[o] = userTable (o);
     for (int m = 0; m < kNumMacros; ++m) gm.macro[m] = pMacro[m]->load();
     const float glide = pGlide->load();
     const float seqGlide = glide > 0.001f ? glide : 0.06f;
@@ -1299,6 +1380,17 @@ std::unique_ptr<juce::XmlElement> AcidanceProcessor::createStateXml()
     auto* extra = xml->createNewChildElement ("ACIDANCE_DATA");
     extra->setAttribute ("seq", seq.serialise());
     extra->setAttribute ("seqLocks", seq.serialiseLocks());
+    for (int o = 0; o < 2; ++o)
+        if (! userFrames[o].empty())
+        {
+            // 16-bit samples, base64: about 90 kB per table
+            juce::MemoryBlock mb (userFrames[o].size() * 2);
+            auto* d = static_cast<juce::int16*> (mb.getData());
+            for (size_t i = 0; i < userFrames[o].size(); ++i)
+                d[i] = (juce::int16) juce::jlimit (-32767, 32767, (int) std::round (userFrames[o][i] * 32767.f));
+            extra->setAttribute ("userWt" + juce::String (o + 1), mb.toBase64Encoding());
+            extra->setAttribute ("userWtName" + juce::String (o + 1), userWavetableName[o]);
+        }
     for (int w = 0; w < 2; ++w)
         if (morphValid[w].load())
         {
@@ -1328,6 +1420,20 @@ void AcidanceProcessor::applyStateXml (const juce::XmlElement& source)
     {
         seq.deserialise (extra->getStringAttribute ("seq"));
         seq.deserialiseLocks (extra->getStringAttribute ("seqLocks"));
+        for (int o = 0; o < 2; ++o)
+        {
+            const auto enc = extra->getStringAttribute ("userWt" + juce::String (o + 1));
+            juce::MemoryBlock mb;
+            if (enc.isNotEmpty() && mb.fromBase64Encoding (enc)
+                && mb.getSize() == (size_t) Wavetables::kFrames * Wavetables::N * 2)
+            {
+                std::vector<float> frames ((size_t) Wavetables::kFrames * Wavetables::N);
+                const auto* d = static_cast<const juce::int16*> (mb.getData());
+                for (size_t i = 0; i < frames.size(); ++i) frames[i] = (float) d[i] / 32767.f;
+                // (the saved wave choice comes back with the parameters right after this)
+                setUserWavetable (o, std::move (frames), extra->getStringAttribute ("userWtName" + juce::String (o + 1)));
+            }
+        }
         for (int w = 0; w < 2; ++w)
         {
             const auto s = extra->getStringAttribute (w == 0 ? "morphA" : "morphB");
