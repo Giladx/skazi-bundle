@@ -1069,6 +1069,55 @@ private:
 };
 
 //==============================================================================
+// RANDOM: a neon yellow-to-pink button with a dice, gently pulsing, so it stands out in every skin
+class RandomButton : public juce::Button, private juce::Timer
+{
+public:
+    RandomButton() : juce::Button ("RANDOM") { startTimerHz (30); }
+
+    void paintButton (juce::Graphics& g, bool over, bool down) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (3.f);
+        const float pulse = 0.5f + 0.5f * std::sin (phase);
+        const auto hot = juce::Colour (0xffffe14d), pink = juce::Colour (0xffff2bd6);
+
+        // glow
+        for (int i = 3; i > 0; --i)
+        {
+            g.setColour (pink.withAlpha ((0.10f + 0.10f * pulse + (over ? 0.08f : 0.f)) / (float) i));
+            g.fillRoundedRectangle (r.expanded ((float) i * 1.6f), 9.f + (float) i);
+        }
+
+        auto body = down ? r.reduced (1.5f) : r;
+        g.setGradientFill (juce::ColourGradient (hot.brighter (over ? 0.15f : 0.f), body.getX(), body.getY(),
+                                                 pink.brighter (over ? 0.15f : 0.f), body.getRight(), body.getBottom(), false));
+        g.fillRoundedRectangle (body, 8.f);
+        g.setColour (juce::Colours::white.withAlpha (0.28f));
+        g.fillRoundedRectangle (body.reduced (4.f).withHeight (body.getHeight() * 0.38f), 6.f);
+        g.setColour (juce::Colours::white.withAlpha (0.55f + 0.35f * pulse));
+        g.drawRoundedRectangle (body.reduced (0.5f), 8.f, 1.4f);
+
+        // dice
+        const float ds = juce::jmin (body.getHeight() - 14.f, 24.f);
+        auto die = juce::Rectangle<float> (body.getX() + 10.f, body.getCentreY() - ds * 0.5f, ds, ds);
+        g.setColour (juce::Colour (0xff17040f));
+        g.fillRoundedRectangle (die, 4.f);
+        g.setColour (hot);
+        const float p = ds * 0.13f;
+        for (auto [fx, fy] : { std::pair { 0.27f, 0.27f }, { 0.73f, 0.27f }, { 0.5f, 0.5f }, { 0.27f, 0.73f }, { 0.73f, 0.73f } })
+            g.fillEllipse (die.getX() + fx * ds - p, die.getY() + fy * ds - p, p * 2.f, p * 2.f);
+
+        g.setColour (juce::Colour (0xff17040f));
+        g.setFont (Acid::font (16.f).withExtraKerningFactor (0.08f));
+        g.drawText ("RANDOM", body.withTrimmedLeft (ds + 14.f).reduced (4.f, 0.f), juce::Justification::centred);
+    }
+
+private:
+    void timerCallback() override { phase += 0.12f; repaint(); }
+    float phase = 0.f;
+};
+
+//==============================================================================
 class PresetBar : public juce::Component, private juce::Timer
 {
 public:
@@ -1081,9 +1130,6 @@ public:
         }
         prev.onClick = [this] { step (-1); };
         next.onClick = [this] { step (1); };
-        rnd.setColour (juce::TextButton::buttonColourId, juce::Colour (0xffc0281e));
-        rnd.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffe0302a));
-        rnd.setToggleState (true, juce::dontSendNotification); // always drawn lit, like PANIC
         rnd.setTooltip ("Random sound with random effects");
         rnd.onClick = [this] { proc.randomizeSound(); repaint(); };
         addAndMakeVisible (rnd);
@@ -1093,13 +1139,13 @@ public:
     void resized() override
     {
         prev.setBounds (0, 0, 36, getHeight());
-        rnd.setBounds (40, 0, 86, getHeight());
+        rnd.setBounds (38, 0, 136, getHeight());
         next.setBounds (getWidth() - 36, 0, 36, getHeight());
     }
 
     void paint (juce::Graphics& g) override
     {
-        auto r = getLocalBounds().withTrimmedLeft (130).withTrimmedRight (40).toFloat();
+        auto r = getLocalBounds().withTrimmedLeft (180).withTrimmedRight (40).toFloat();
         g.setColour (Acid::screen);
         g.fillRoundedRectangle (r, 5.f);
         g.setColour (Acid::accentFor (Acid::violet).withAlpha (0.7f));
@@ -1147,7 +1193,8 @@ private:
 
     AcidanceProcessor& proc;
     std::function<void()> onOpen;
-    juce::TextButton prev { "<" }, next { ">" }, rnd { "RANDOM" };
+    juce::TextButton prev { "<" }, next { ">" };
+    RandomButton rnd;
     int lastChange = -1;
 };
 
@@ -2058,7 +2105,7 @@ public:
     {
         if (presetBar == nullptr) return;
         // Header: logo | preset | run + tempo / master / pan | PANIC
-        presetBar->setBounds (330, 32, 440, 46);
+        presetBar->setBounds (330, 28, 440, 54);
         runButton.setBounds (780, 30, 80, 44);
         bpmKnob->setBounds (872, 4, 96, 92);
         volumeKnob->setBounds (970, 4, 96, 92);
