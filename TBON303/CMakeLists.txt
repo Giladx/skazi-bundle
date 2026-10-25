@@ -82,7 +82,7 @@ if(SKAZI303_BUILD_TESTS)
     juce_add_console_app(Skazi303HostTest PRODUCT_NAME "Skazi303HostTest")
     target_sources(Skazi303HostTest PRIVATE tests/HostTest.cpp)
     target_compile_definitions(Skazi303HostTest PRIVATE
-        JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+        JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_MODAL_LOOPS_PERMITTED=1)
     target_link_libraries(Skazi303HostTest PRIVATE
         juce::juce_audio_processors juce::juce_recommended_config_flags)
 endif()

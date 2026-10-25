@@ -13,6 +13,7 @@
 #include <tuple>
 #include "dsp/Sequencer.h"
 
+#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -302,6 +303,17 @@ int main (int argc, char** argv)
         std::snprintf (msg, sizeof msg, "preset variety: %d distinct recipes out of %d presets, %d FX combinations",
                        (int) recipes.size(), n, (int) fxScenes.size());
         check (recipes.size() > (size_t) (n * 8 / 10), msg);
+    }
+
+    // 6. Cost of building presets: a host may ask for all program names at once
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+        for (int i = 0; i < numFactoryPresets(); ++i)
+            factoryPreset (i);
+        const double ms = std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - t0).count();
+        char msg[120];
+        std::snprintf (msg, sizeof msg, "building all %d presets takes %.1f ms", numFactoryPresets(), ms);
+        check (true, msg);
     }
 
     std::printf ("%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");

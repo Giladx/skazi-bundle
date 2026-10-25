@@ -15,11 +15,11 @@ namespace ids
 inline juce::String step (int i, const char* field) { return "s" + juce::String (i + 1) + "_" + field; }
 }
 
-class Skazi303Processor : public juce::AudioProcessor
+class Skazi303Processor : public juce::AudioProcessor, private juce::AsyncUpdater
 {
 public:
     Skazi303Processor();
-    ~Skazi303Processor() override = default;
+    ~Skazi303Processor() override { cancelPendingUpdate(); }
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -37,8 +37,8 @@ public:
 
     // The factory bank doubles as the host's program list.
     int getNumPrograms() override { return s303::numFactoryPresets(); }
-    int getCurrentProgram() override { return currentProgram; }
-    void setCurrentProgram (int index) override { loadFactoryPreset (index); }
+    int getCurrentProgram() override { const int p = pendingProgram.load(); return p >= 0 ? p : currentProgram; }
+    void setCurrentProgram (int index) override;
     const juce::String getProgramName (int index) override;
     void changeProgramName (int, const juce::String&) override {}
 
@@ -54,6 +54,7 @@ public:
 
     // Presets (message thread).
     void loadFactoryPreset (int index);
+    void selectPreset (int index); // from the plugin's own UI: loads it and tells the host
     void randomizeSound();
     bool saveUserPreset (const juce::File&);
     bool loadUserPreset (const juce::File&);
@@ -112,7 +113,12 @@ private:
     int heldCount = 0;
     int midiTranspose = 0;
     void applyPreset (const s303::Preset&, bool soundOnly);
-    void levelCurrentSound();
+    void levelCurrentSound (int factoryIndex = -1);
+    float measureLevelDb();
+    void handleAsyncUpdate() override;
+
+    std::atomic<int> pendingProgram { -1 };   // a host program change waiting for the message thread
+    std::vector<float> factoryLevelCache;     // measured VOLUME per factory preset (NaN = not yet)
     void setPresetLabel (int index, const juce::String& name);
 
     int currentProgram = 0;

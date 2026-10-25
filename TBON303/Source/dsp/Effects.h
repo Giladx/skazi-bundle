@@ -35,6 +35,8 @@ public:
 
     void write (float x)
     {
+        if (data.empty())
+            return;
         data[(size_t) pos] = x;
         if (++pos >= (int) data.size())
             pos = 0;
@@ -44,10 +46,12 @@ public:
     float read (double delaySamples) const
     {
         const int size = (int) data.size();
+        if (size < 4 || ! std::isfinite (delaySamples))
+            return 0.0f;
         delaySamples = std::clamp (delaySamples, 1.0, (double) size - 2.0);
         double rp = pos - 1 - delaySamples;
-        while (rp < 0.0)
-            rp += size;
+        if (rp < 0.0)
+            rp += size; // delaySamples < size, so one wrap is always enough
         const int i0 = (int) rp;
         const int i1 = (i0 + 1) % size;
         const float t = (float) (rp - i0);

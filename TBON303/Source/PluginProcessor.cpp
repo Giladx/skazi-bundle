@@ -582,12 +582,42 @@ void Skazi303Processor::setPresetLabel (int index, const juce::String& name)
     apvts.state.setProperty ("presetName", name, nullptr);
 }
 
+void Skazi303Processor::setCurrentProgram (int index)
+{
+    // Hosts can change programs from the audio thread (VST3 program parameter). Loading a preset
+    // sets ~150 parameters, so do it on the message thread instead, never inside the audio callback.
+    if (juce::MessageManager::existsAndIsCurrentThread())
+    {
+        pendingProgram = -1;
+        loadFactoryPreset (index);
+    }
+    else
+    {
+        pendingProgram = juce::jlimit (0, s303::numFactoryPresets() - 1, index);
+        triggerAsyncUpdate();
+    }
+}
+
+void Skazi303Processor::handleAsyncUpdate()
+{
+    const int index = pendingProgram.exchange (-1);
+    if (index >= 0)
+        loadFactoryPreset (index);
+}
+
+void Skazi303Processor::selectPreset (int index)
+{
+    loadFactoryPreset (index);
+    // Keep the host's program in step, or it may later "restore" the old one
+    updateHostDisplay (ChangeDetails().withProgramChanged (true));
+}
+
 void Skazi303Processor::loadFactoryPreset (int index)
 {
     index = juce::jlimit (0, s303::numFactoryPresets() - 1, index);
     const auto preset = s303::factoryPreset (index);
     applyPreset (preset, false);
-    levelCurrentSound();
+    levelCurrentSound (index);
     currentProgram = index;
     setPresetLabel (index, juce::String (preset.category) + " / " + juce::String (preset.name));
 }
@@ -600,10 +630,26 @@ void Skazi303Processor::randomizeSound()
     setPresetLabel (-1, juce::String (preset.name) + " *");
 }
 
-void Skazi303Processor::levelCurrentSound()
+void Skazi303Processor::levelCurrentSound (int factoryIndex)
+{
+    // Factory presets never change, so each one is measured once and remembered.
+    if (factoryIndex >= 0)
+    {
+        if (factoryLevelCache.empty())
+            factoryLevelCache.assign ((size_t) s303::numFactoryPresets(), std::numeric_limits<float>::quiet_NaN());
+        auto& cached = factoryLevelCache[(size_t) factoryIndex];
+        if (std::isnan (cached))
+            cached = measureLevelDb();
+        setParam ("volume", cached);
+        return;
+    }
+    setParam ("volume", measureLevelDb());
+}
+
+float Skazi303Processor::measureLevelDb()
 {
     // Play the current sound offline over its pattern (every step gated, so sparse
-    // patterns don't read as quiet) and set VOLUME so all presets land at the same level.
+    // patterns don't read as quiet) and return the VOLUME that lands it at the shared level.
     constexpr double renderRate = 44100.0;
     constexpr double bpm = 125.0;
     constexpr double targetRms = 0.18; // about -15 dBFS for normal notes; accents sit a few dB above
@@ -687,8 +733,9 @@ void Skazi303Processor::levelCurrentSound()
     const double heldRms = std::sqrt (sum / held);
 
     const double rms = std::max (patternRms, heldRms);
-    if (rms > 1.0e-5)
-        setParam ("volume", (float) juce::jlimit (-30.0, 9.0, juce::Decibels::gainToDecibels (targetRms / rms)));
+    if (rms <= 1.0e-5)
+        return p.volume->load();
+    return (float) juce::jlimit (-30.0, 9.0, juce::Decibels::gainToDecibels (targetRms / rms));
 }
 
 juce::File Skazi303Processor::getUserPresetFolder()
