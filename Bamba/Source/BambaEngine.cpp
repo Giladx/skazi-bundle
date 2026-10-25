@@ -38,6 +38,14 @@ const std::vector<skazi::ParamDef>& paramDefs()
         { "reverb", "Reverb", P::Float, 0, 100, 50, "%", 0.1f },
         { "delay", "Delay", P::Float, 0, 100, 30, "%", 0.1f },
         { "gain", "Gain", P::Float, -24, 6, 0, "dB", 0.1f },
+        // Splice sample layer (added in 1.1, after the originals so saved projects keep their mapping)
+        { "synth", "Synth Level", P::Float, 0, 100, 100, "%", 0.1f },
+        { "smix", "Sample Level", P::Float, 0, 100, 80, "%", 0.1f },
+        { "sfit", "Sample Fit", P::Choice, 0, 2, 1, "", 1, 1, { "ORIGINAL", "STRETCH", "VARISPEED" } },
+        { "salign", "Sample Align", P::Choice, 0, 1, 1, "", 1, 1, { "START", "END ON DROP" } },
+        { "stune", "Sample Tune", P::Float, -24, 24, 0, "st", 1 },
+        { "sshape", "Sample Shape", P::Float, 0, 100, 30, "%", 0.1f },
+        { "srev", "Sample Reverse", P::Bool, 0, 1, 0 },
     };
     return defs;
 }
@@ -54,7 +62,43 @@ Settings Settings::fromValues (const std::function<float (const char*)>& v)
     s.sweep = v ("sweep") * 0.01f; s.reso = v ("reso") * 0.01f; s.roll = v ("roll") * 0.01f;
     s.width = v ("width") * 0.01f; s.phaser = v ("phaser") * 0.01f;
     s.reverb = v ("reverb") * 0.01f; s.delay = v ("delay") * 0.01f; s.gain = juce::Decibels::decibelsToGain (v ("gain"));
+    s.synth = v ("synth") * 0.01f; s.sampleLevel = v ("smix") * 0.01f; s.sampleTune = v ("stune"); s.sampleShape = v ("sshape") * 0.01f;
+    s.sampleFit = (int) v ("sfit"); s.sampleAlign = (int) v ("salign"); s.sampleReverse = v ("srev") > 0.5f;
     return s;
+}
+
+SamplePtr makeSample (const juce::AudioBuffer<float>& audio, double rate)
+{
+    const int n = audio.getNumSamples(), chans = audio.getNumChannels();
+    if (n <= 0 || chans <= 0 || rate <= 0)
+        return nullptr;
+    auto d = std::make_shared<SampleData>();
+    d->rate = rate;
+    d->l.assign (audio.getReadPointer (0), audio.getReadPointer (0) + n);
+    d->r.assign (audio.getReadPointer (chans > 1 ? 1 : 0), audio.getReadPointer (chans > 1 ? 1 : 0) + n);
+
+    // Peak-normalise, so SAMPLE LEVEL means the same for a quiet Splice riser and a loud one.
+    float peak = 0.0f;
+    for (int i = 0; i < n; ++i) peak = juce::jmax (peak, std::abs (d->l[(size_t) i]), std::abs (d->r[(size_t) i]));
+    if (peak > 1.0e-5f)
+        for (int i = 0; i < n; ++i) { d->l[(size_t) i] /= peak; d->r[(size_t) i] /= peak; }
+
+    d->overview.assign (512, 0.0f);
+    for (int i = 0; i < n; ++i)
+    {
+        auto& o = d->overview[(size_t) ((juce::int64) i * 512 / n)];
+        o = juce::jmax (o, std::abs (d->l[(size_t) i]), std::abs (d->r[(size_t) i]));
+    }
+    return d;
+}
+
+SamplePlacement placeSample (const Settings& s, double sampleSeconds, double lenSeconds)
+{
+    // STRETCH and VARISPEED fill the effect exactly; ORIGINAL keeps the sample's own speed,
+    // either from the note or timed so it ends right on the drop.
+    if (s.sampleFit != FitOriginal) return { 0.0, lenSeconds };
+    if (s.sampleAlign == AlignStart) return { 0.0, sampleSeconds };
+    return { lenSeconds - sampleSeconds, sampleSeconds };
 }
 
 Shape shapeAt (int type, float p, float curve, float lenSec)
@@ -86,7 +130,7 @@ void Engine::prepare (double sampleRate)
     dlPos = 0;
     reverb.setSampleRate (sr);
     reverb.reset();
-    active = releasing = false;
+    active = releasing = sActive = false;
     heldNote = -1;
 }
 
@@ -107,6 +151,111 @@ void Engine::start (int note, const Settings& s, juce::int64 seed)
         rRoll = r.nextFloat() * 0.7f;
     }
     uiType.store (type);
+}
+
+void Engine::startSample (const Settings& s)
+{
+    voiceSmp = smp;
+    sActive = voiceSmp != nullptr && voiceSmp->frames() > 1 && s.sampleLevel > 0.0f;
+    if (! sActive) return;
+    sT = 0; sOffset = 0; sDelay = 0;
+    sFit = s.sampleFit;
+    for (auto& gr : grains) gr.age = -1;
+    for (int c = 0; c < 2; ++c) sic1[c] = sic2[c] = 0;
+
+    const double frames = voiceSmp->frames();
+    const double pitch = std::exp2 ((noteSemis + s.sampleTune) / 12.0);
+    if (sFit == FitVarispeed)
+    {
+        sStep = frames / len; // the whole file across the effect, like a tape sped up or slowed down
+        return;
+    }
+    sStep = voiceSmp->rate / sr * pitch;
+    if (sFit == FitStretch)
+        return;
+    const auto place = placeSample (s, frames / sStep / sr, len / sr);
+    sDelay = place.start * sr;
+    if (sDelay < 0) { sOffset = -sDelay * sStep; sDelay = 0; } // longer than the effect: start partway so it still ends on the drop
+}
+
+void Engine::samplePlay (const Settings& s, float& l, float& r)
+{
+    const auto& d = *voiceSmp;
+    const int frames = d.frames();
+    auto read = [&] (double pos, float& a, float& b)
+    {
+        if (pos < 0 || pos >= frames - 1) { a = b = 0; return; }
+        if (s.sampleReverse) pos = frames - 1 - pos;
+        const int i = (int) pos;
+        const float f = (float) (pos - i);
+        const int j = juce::jmin (frames - 1, i + 1);
+        a = d.l[(size_t) i] + (d.l[(size_t) j] - d.l[(size_t) i]) * f;
+        b = d.r[(size_t) i] + (d.r[(size_t) j] - d.r[(size_t) i]) * f;
+    };
+
+    float a = 0, b = 0;
+    if (sFit == FitStretch)
+    {
+        // Overlapping Hann grains that read at the sample's own pitch while their start points
+        // walk through the file at the speed that makes it last exactly the effect's length.
+        const int grain = juce::jmax (64, (int) (0.09 * sr)), hop = grain / 2;
+        if (((juce::int64) sT) % hop == 0)
+        {
+            auto& gr = grains[0].age < 0 || (grains[1].age >= 0 && grains[0].age >= grains[1].age) ? grains[0] : grains[1];
+            gr.pos = sT / len * frames;
+            gr.age = 0;
+        }
+        for (auto& gr : grains)
+            if (gr.age >= 0)
+            {
+                float ga, gb;
+                read (gr.pos + gr.age * sStep, ga, gb);
+                const float w = 0.5f - 0.5f * (float) std::cos (twoPi * gr.age / grain);
+                a += ga * w; b += gb * w;
+                if (++gr.age >= grain) gr.age = -1;
+            }
+        if (sT >= len) sActive = false;
+    }
+    else if (sFit == FitVarispeed)
+    {
+        read (sT * sStep, a, b);
+        if (sT >= len) sActive = false;
+    }
+    else if (sT >= sDelay)
+    {
+        const double pos = sOffset + (sT - sDelay) * sStep;
+        read (pos, a, b);
+        if (pos >= frames - 1) sActive = false;
+    }
+    sT += 1.0;
+
+    // SHAPE: how much of BAMBA's own level and filter movement the sample follows
+    const float shape = s.sampleShape;
+    float amp = 1.0f;
+    if (shape > 0.001f)
+    {
+        const float sweep = s.type == RandomFx ? rSweep : s.sweep;
+        const auto sh = shapeAt (type, (float) juce::jmin (1.0, sT / len), s.curve, (float) (len / sr));
+        amp = 1.0f - shape + shape * sh.amp;
+        const float open = 1.0f - shape + shape * (sh.filter * sweep + (1.0f - sweep));
+        const float cut = juce::jlimit (30.0f, (float) (0.45 * sr), 80.0f * std::exp2 (open * 7.9f));
+        const float g = (float) std::tan (juce::MathConstants<double>::pi * cut / sr);
+        const float k = 1.0f / (0.6f + s.reso * s.reso * 4.0f);
+        const float a1 = 1.0f / (1.0f + g * (g + k)), a2 = g * a1, a3 = g * a2;
+        float* x[2] = { &a, &b };
+        for (int c = 0; c < 2; ++c)
+        {
+            const float v3 = *x[c] - sic2[c];
+            const float v1 = a1 * sic1[c] + a2 * v3;
+            const float v2 = sic2[c] + a2 * sic1[c] + a3 * v3;
+            sic1[c] = 2.0f * v1 - sic1[c];
+            sic2[c] = 2.0f * v2 - sic2[c];
+            *x[c] = v2;
+        }
+    }
+    const float level = s.sampleLevel * 0.6f * amp;
+    l = a * level;
+    r = b * level;
 }
 
 void Engine::sample (const Settings& s, float& l, float& r)
@@ -250,6 +399,7 @@ void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi
             {
                 start (m.getNoteNumber(), s, (juce::int64) rng.nextInt());
                 len = s.bars * barSamples;
+                startSample (s);
                 heldNote = m.getNoteNumber();
                 releasing = false;
                 fade = 1.0f;
@@ -257,7 +407,7 @@ void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi
             else if ((m.isNoteOff() && m.getNoteNumber() == heldNote) || m.isAllNotesOff() || m.isAllSoundOff())
             {
                 heldNote = -1;
-                if (active && s.trigger == Midi) releasing = true;
+                if ((active || sActive) && s.trigger == Midi) releasing = true;
             }
         }
 
@@ -265,16 +415,26 @@ void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi
         if (active)
         {
             sample (s, l, r);
-            if (releasing)
-            {
-                fade -= fadeStep;
-                if (fade <= 0.0f) { fade = 0.0f; active = releasing = false; }
-            }
+            l *= s.synth;
+            r *= s.synth;
+            t += 1.0;
+            if (t >= len) active = false;
+        }
+        if (sActive)
+        {
+            float sl, sr2;
+            samplePlay (s, sl, sr2);
+            l += sl;
+            r += sr2;
+        }
+        if (releasing)
+        {
+            fade -= fadeStep;
+            if (fade <= 0.0f) { fade = 0.0f; active = sActive = false; }
             l *= fade;
             r *= fade;
-            t += 1.0;
-            if (t >= len) { active = releasing = false; }
         }
+        if (! active && ! sActive) releasing = false;
         L[i] = l;
         if (R != L) R[i] = r;
     }

@@ -53,6 +53,123 @@ namespace
         }
     }
 
+    // bars: 0 = 1 bar, 1 = 2, 2 = 4, 3 = 8, 4 = 16.  sfit: 0 ORIGINAL, 1 STRETCH, 2 VARISPEED.  salign: 0 START, 1 END ON DROP.
+    // spliceKind / spliceLength are not parameters: they tell BAMBA which kind of Splice sample to pick
+    // (RiserLibrary::Kind, -1 any; RiserLibrary::Length) when the preset loads.
+    constexpr float kRise = 0, kDown = 1, kSweep = 2, kImpact = 3, kReverse = 4, lAny = 0, lShort = 1, lLong = 2;
+
+    using Changes = std::initializer_list<std::pair<const char*, float>>;
+    struct Designed { const char* name; Changes changes; };
+
+    void designed (const std::function<void (const char*, std::initializer_list<Designed>)>& bank)
+    {
+        bank ("SHORT RISES", {
+            { "Quick Lift", { { "type", Uplifter }, { "bars", 0 }, { "curve", 70 }, { "noise", 80 }, { "tone", 30 }, { "pfrom", -12 }, { "pto", 12 }, { "sweep", 85 }, { "reverb", 35 } } },
+            { "Snap Riser", { { "type", Uplifter }, { "bars", 1 }, { "curve", 75 }, { "noise", 60 }, { "tone", 60 }, { "pfrom", -7 }, { "pto", 19 }, { "sweep", 90 }, { "reso", 55 }, { "width", 80 } } },
+            { "White Flick", { { "type", Uplifter }, { "bars", 0 }, { "curve", 60 }, { "noise", 95 }, { "tone", 5 }, { "color", 10 }, { "sweep", 100 }, { "reso", 30 }, { "reverb", 25 } } },
+            { "Pre-Drop Whip", { { "type", Uplifter }, { "bars", 0 }, { "curve", 85 }, { "noise", 70 }, { "tone", 50 }, { "pto", 36 }, { "sweep", 100 }, { "reso", 70 }, { "reverb", 20 }, { "delay", 20 } } },
+            { "Fill Riser", { { "type", Uplifter }, { "bars", 1 }, { "curve", 60 }, { "noise", 80 }, { "tone", 20 }, { "roll", 55 }, { "reverb", 40 } } },
+            { "Laser Climb", { { "type", Laser }, { "bars", 1 }, { "tone", 90 }, { "noise", 10 }, { "roll", 30 }, { "reso", 60 }, { "delay", 45 } } },
+            { "Half Bar Zip", { { "type", Uplifter }, { "bars", 0 }, { "curve", 95 }, { "noise", 50 }, { "tone", 70 }, { "pfrom", 0 }, { "pto", 24 }, { "reso", 45 }, { "reverb", 15 }, { "delay", 0 } } },
+        });
+        bank ("LONG RISES", {
+            { "16 Bar Journey", { { "type", Uplifter }, { "bars", 4 }, { "curve", 65 }, { "noise", 60 }, { "tone", 40 }, { "pfrom", -24 }, { "pto", 24 }, { "sweep", 90 }, { "reso", 35 }, { "phaser", 50 }, { "reverb", 60 }, { "width", 90 } } },
+            { "Endless Ascent", { { "type", Uplifter }, { "bars", 4 }, { "curve", 80 }, { "noise", 40 }, { "tone", 70 }, { "pfrom", -24 }, { "pto", 36 }, { "sweep", 70 }, { "reso", 45 }, { "roll", 30 } } },
+            { "Slow Burn", { { "type", Uplifter }, { "bars", 3 }, { "curve", 85 }, { "noise", 75 }, { "tone", 25 }, { "pfrom", -12 }, { "pto", 12 }, { "sweep", 95 }, { "reso", 25 }, { "reverb", 70 } } },
+            { "Stadium Lift", { { "type", Uplifter }, { "bars", 3 }, { "curve", 55 }, { "noise", 65 }, { "tone", 55 }, { "pto", 31 }, { "roll", 45 }, { "reverb", 75 }, { "delay", 35 } } },
+            { "Long Siren Climb", { { "type", Siren }, { "bars", 3 }, { "tone", 85 }, { "noise", 15 }, { "pfrom", -12 }, { "pto", 24 }, { "reso", 40 }, { "delay", 40 } } },
+            { "Breakdown Tide", { { "type", Uplifter }, { "bars", 4 }, { "curve", 50 }, { "noise", 85 }, { "tone", 15 }, { "color", 65 }, { "sweep", 80 }, { "phaser", 70 }, { "reverb", 80 } } },
+        });
+        bank ("DOWNLIFTERS", {
+            { "Fall Out", { { "type", Downlifter }, { "bars", 1 }, { "curve", 40 }, { "noise", 80 }, { "tone", 30 }, { "reverb", 60 } } },
+            { "Long Exhale", { { "type", Downlifter }, { "bars", 2 }, { "curve", 55 }, { "noise", 70 }, { "tone", 20 }, { "color", 60 }, { "reverb", 75 }, { "delay", 40 } } },
+            { "Pitch Dive", { { "type", Downlifter }, { "bars", 1 }, { "noise", 20 }, { "tone", 90 }, { "pfrom", -24 }, { "pto", 24 }, { "sweep", 50 }, { "reso", 50 } } },
+            { "Post-Drop Wash", { { "type", Downlifter }, { "bars", 2 }, { "noise", 95 }, { "tone", 0 }, { "color", 30 }, { "sweep", 90 }, { "reverb", 85 }, { "phaser", 40 } } },
+            { "Tape Stop Fall", { { "type", Downlifter }, { "bars", 0 }, { "curve", 25 }, { "tone", 80 }, { "noise", 30 }, { "pto", 12 }, { "reverb", 20 }, { "delay", 0 } } },
+            { "Sub Slide", { { "type", SubDrop }, { "bars", 1 }, { "pto", 36 }, { "curve", 60 }, { "reverb", 20 }, { "delay", 0 } } },
+        });
+        bank ("NOISE SWEEPS", {
+            { "White Wall Up", { { "type", Uplifter }, { "bars", 2 }, { "noise", 100 }, { "tone", 0 }, { "color", 5 }, { "sweep", 100 }, { "reso", 40 }, { "curve", 60 }, { "width", 100 } } },
+            { "Noise Swell And Fade", { { "type", NoiseSweep }, { "bars", 1 }, { "noise", 100 }, { "tone", 0 }, { "color", 10 }, { "sweep", 95 }, { "reso", 60 } } },
+            { "Pink Breath", { { "type", NoiseSweep }, { "bars", 2 }, { "color", 50 }, { "noise", 90 }, { "tone", 0 }, { "reso", 30 }, { "phaser", 60 }, { "reverb", 60 } } },
+            { "Resonant Hiss", { { "type", Uplifter }, { "bars", 2 }, { "noise", 100 }, { "tone", 0 }, { "color", 15 }, { "sweep", 100 }, { "reso", 90 } } },
+            { "Jet Pass", { { "type", NoiseSweep }, { "bars", 0 }, { "color", 0 }, { "noise", 100 }, { "tone", 0 }, { "reso", 75 }, { "phaser", 90 }, { "width", 100 } } },
+            { "Brown Rumble Up", { { "type", Uplifter }, { "bars", 2 }, { "noise", 100 }, { "color", 90 }, { "tone", 10 }, { "sweep", 80 }, { "reso", 30 } } },
+        });
+        bank ("PITCHED UPLIFTS", {
+            { "Octave Scream", { { "type", Uplifter }, { "bars", 2 }, { "noise", 20 }, { "tone", 90 }, { "pfrom", -12 }, { "pto", 24 }, { "sweep", 70 }, { "reso", 50 }, { "width", 90 } } },
+            { "Two Octave Rocket", { { "type", Uplifter }, { "bars", 3 }, { "noise", 30 }, { "tone", 85 }, { "pfrom", -24 }, { "pto", 24 }, { "curve", 70 } } },
+            { "Supersaw Lift", { { "type", Uplifter }, { "bars", 2 }, { "noise", 25 }, { "tone", 95 }, { "width", 100 }, { "pfrom", 0 }, { "pto", 12 }, { "reso", 20 }, { "sweep", 80 }, { "phaser", 30 } } },
+            { "Fifth Climb", { { "type", Uplifter }, { "bars", 1 }, { "tone", 85 }, { "noise", 15 }, { "pfrom", -5 }, { "pto", 19 }, { "reso", 35 } } },
+            { "Hyper Pitch", { { "type", Uplifter }, { "bars", 2 }, { "tone", 90 }, { "noise", 30 }, { "pfrom", 0 }, { "pto", 48 }, { "curve", 75 }, { "reso", 60 } } },
+        });
+        bank ("FILTERED BUILDS", {
+            { "Filter Opener", { { "type", Uplifter }, { "bars", 3 }, { "noise", 50 }, { "tone", 60 }, { "pfrom", 0 }, { "pto", 0 }, { "sweep", 100 }, { "reso", 65 }, { "curve", 60 } } },
+            { "Acid Squelch Build", { { "type", Uplifter }, { "bars", 2 }, { "noise", 20 }, { "tone", 90 }, { "pfrom", -12 }, { "pto", -12 }, { "sweep", 100 }, { "reso", 95 }, { "curve", 55 }, { "delay", 40 } } },
+            { "Phaser Tunnel", { { "type", Uplifter }, { "bars", 3 }, { "noise", 70 }, { "tone", 40 }, { "phaser", 100 }, { "sweep", 80 }, { "reso", 50 } } },
+            { "Lowpass Creep", { { "type", Uplifter }, { "bars", 4 }, { "noise", 60 }, { "tone", 50 }, { "sweep", 100 }, { "reso", 50 }, { "curve", 75 }, { "pfrom", 0 }, { "pto", 7 } } },
+            { "Band Riser", { { "type", Uplifter }, { "bars", 2 }, { "noise", 90 }, { "tone", 20 }, { "color", 30 }, { "sweep", 100 }, { "reso", 85 }, { "phaser", 20 } } },
+        });
+        bank ("REVERSE SWELLS", {
+            { "Reverse Cymbal", { { "type", ReverseCrash }, { "bars", 0 }, { "noise", 100 }, { "color", 10 }, { "curve", 50 }, { "reverb", 40 } } },
+            { "Reverse Swell", { { "type", ReverseCrash }, { "bars", 1 }, { "curve", 65 }, { "reverb", 70 }, { "width", 100 } } },
+            { "Suck Back", { { "type", ReverseCrash }, { "bars", 0 }, { "curve", 85 }, { "noise", 100 }, { "reverb", 20 }, { "delay", 0 } } },
+            { "Long Reverse Wash", { { "type", ReverseCrash }, { "bars", 2 }, { "curve", 55 }, { "reverb", 85 }, { "phaser", 30 } } },
+        });
+        bank ("IMPACTS", {
+            { "Drop Boom", { { "type", Impact }, { "bars", 1 }, { "tone", 100 }, { "noise", 60 }, { "reverb", 80 }, { "curve", 60 } } },
+            { "Short Thud", { { "type", Impact }, { "bars", 0 }, { "curve", 15 }, { "reverb", 30 }, { "tone", 90 }, { "noise", 40 } } },
+            { "Cinematic Hit", { { "type", Impact }, { "bars", 1 }, { "curve", 90 }, { "reverb", 95 }, { "delay", 30 }, { "noise", 80 } } },
+            { "Sub Bomb Long", { { "type", SubDrop }, { "bars", 1 }, { "pto", 24 }, { "curve", 90 }, { "reverb", 30 } } },
+            { "Noise Crack", { { "type", Impact }, { "bars", 0 }, { "noise", 100 }, { "color", 0 }, { "tone", 60 }, { "curve", 30 }, { "reverb", 60 } } },
+        });
+        bank ("PSYTRANCE", {
+            { "Psy 16 Bar Launch", { { "type", Uplifter }, { "bars", 4 }, { "curve", 72 }, { "noise", 60 }, { "tone", 60 }, { "pfrom", -24 }, { "pto", 36 }, { "sweep", 95 }, { "reso", 55 }, { "roll", 35 }, { "width", 90 }, { "phaser", 45 }, { "reverb", 55 }, { "delay", 45 } } },
+            { "Goa Siren", { { "type", Siren }, { "bars", 2 }, { "tone", 90 }, { "noise", 10 }, { "pfrom", 0 }, { "pto", 24 }, { "reso", 60 }, { "delay", 55 } } },
+            { "Full-On Snare Ramp", { { "type", SnareRoll }, { "bars", 3 }, { "noise", 85 }, { "tone", 45 }, { "pfrom", -7 }, { "pto", 12 }, { "sweep", 85 }, { "reso", 30 }, { "reverb", 45 } } },
+            { "Twilight Laser Storm", { { "type", Laser }, { "bars", 2 }, { "tone", 100 }, { "noise", 5 }, { "reso", 75 }, { "delay", 60 }, { "roll", 40 }, { "phaser", 50 } } },
+            { "Psy Tunnel", { { "type", Uplifter }, { "bars", 3 }, { "noise", 80 }, { "tone", 30 }, { "color", 30 }, { "phaser", 85 }, { "sweep", 90 }, { "reso", 70 }, { "roll", 20 } } },
+            { "Dark Psy Downshift", { { "type", Downlifter }, { "bars", 1 }, { "tone", 80 }, { "noise", 40 }, { "pfrom", -24 }, { "pto", 12 }, { "reso", 60 }, { "delay", 40 } } },
+            { "Acid Psy Lift", { { "type", Uplifter }, { "bars", 2 }, { "tone", 95 }, { "noise", 15 }, { "pfrom", -12 }, { "pto", 24 }, { "reso", 90 }, { "sweep", 100 }, { "delay", 50 } } },
+            { "Forest Breath", { { "type", NoiseSweep }, { "bars", 2 }, { "color", 60 }, { "noise", 90 }, { "tone", 10 }, { "phaser", 80 }, { "reverb", 80 }, { "delay", 40 } } },
+        });
+        bank ("TECHNO", {
+            { "Warehouse Noise Lift", { { "type", Uplifter }, { "bars", 3 }, { "noise", 95 }, { "tone", 10 }, { "color", 25 }, { "sweep", 90 }, { "reso", 40 }, { "reverb", 70 }, { "curve", 70 } } },
+            { "Industrial Sweep", { { "type", NoiseSweep }, { "bars", 2 }, { "noise", 100 }, { "tone", 0 }, { "color", 0 }, { "reso", 85 }, { "phaser", 60 }, { "width", 100 } } },
+            { "Hypnotic Rise", { { "type", Uplifter }, { "bars", 2 }, { "noise", 70 }, { "tone", 40 }, { "pfrom", 0 }, { "pto", 12 }, { "roll", 25 }, { "delay", 55 }, { "reverb", 50 } } },
+            { "Rumble Drop", { { "type", SubDrop }, { "bars", 0 }, { "pto", 12 }, { "curve", 40 }, { "reverb", 50 } } },
+            { "Peak Time Wash", { { "type", ReverseCrash }, { "bars", 1 }, { "reverb", 90 }, { "width", 100 }, { "curve", 60 } } },
+            { "Hard Techno Snare Run", { { "type", SnareRoll }, { "bars", 2 }, { "noise", 100 }, { "tone", 30 }, { "reso", 20 }, { "reverb", 30 } } },
+            { "Detroit Down", { { "type", Downlifter }, { "bars", 2 }, { "noise", 60 }, { "tone", 60 }, { "reverb", 70 }, { "delay", 50 } } },
+        });
+        bank ("HOUSE", {
+            { "Classic Snare Roll", { { "type", SnareRoll }, { "bars", 3 }, { "noise", 75 }, { "tone", 55 }, { "pfrom", 0 }, { "pto", 12 }, { "reverb", 50 } } },
+            { "Disco Filter Lift", { { "type", Uplifter }, { "bars", 2 }, { "noise", 40 }, { "tone", 70 }, { "pfrom", 0 }, { "pto", 12 }, { "sweep", 100 }, { "reso", 60 }, { "phaser", 40 } } },
+            { "Tech House Woosh", { { "type", NoiseSweep }, { "bars", 1 }, { "noise", 100 }, { "tone", 0 }, { "color", 20 }, { "reso", 50 }, { "reverb", 50 }, { "delay", 30 } } },
+            { "Deep Reverse Swell", { { "type", ReverseCrash }, { "bars", 1 }, { "reverb", 80 }, { "curve", 50 }, { "color", 40 } } },
+            { "Piano House Uplift", { { "type", Uplifter }, { "bars", 3 }, { "noise", 60 }, { "tone", 50 }, { "pfrom", -12 }, { "pto", 12 }, { "curve", 60 }, { "reverb", 65 }, { "roll", 30 } } },
+            { "Garage Zap", { { "type", Laser }, { "bars", 0 }, { "tone", 90 }, { "noise", 5 }, { "delay", 40 }, { "reso", 50 } } },
+        });
+        bank ("SPLICE LAYER", {
+            { "Splice Long Riser Lift", { { "type", Uplifter }, { "bars", 3 }, { "synth", 45 }, { "smix", 85 }, { "sfit", 1 }, { "sshape", 40 }, { "spliceKind", kRise }, { "spliceLength", lLong } } },
+            { "Splice Short Riser On Drop", { { "type", Uplifter }, { "bars", 1 }, { "synth", 40 }, { "smix", 90 }, { "sfit", 0 }, { "salign", 1 }, { "sshape", 0 }, { "spliceKind", kRise }, { "spliceLength", lShort } } },
+            { "Splice Tape Riser", { { "type", Uplifter }, { "bars", 2 }, { "synth", 30 }, { "smix", 90 }, { "sfit", 2 }, { "sshape", 20 }, { "spliceKind", kRise }, { "spliceLength", lAny } } },
+            { "Splice Psy 16 Bar", { { "type", Uplifter }, { "bars", 4 }, { "curve", 70 }, { "pfrom", -24 }, { "pto", 36 }, { "roll", 30 }, { "synth", 50 }, { "smix", 80 }, { "sfit", 1 }, { "sshape", 50 }, { "spliceKind", kRise }, { "spliceLength", lLong } } },
+            { "Splice Filtered Build", { { "type", Uplifter }, { "bars", 3 }, { "sweep", 100 }, { "reso", 60 }, { "synth", 35 }, { "smix", 90 }, { "sfit", 1 }, { "sshape", 90 }, { "spliceKind", kRise }, { "spliceLength", lAny } } },
+            { "Splice Riser Up 12", { { "type", Uplifter }, { "bars", 1 }, { "synth", 30 }, { "smix", 90 }, { "sfit", 0 }, { "salign", 1 }, { "stune", 12 }, { "sshape", 0 }, { "spliceKind", kRise }, { "spliceLength", lShort } } },
+            { "Splice Mostly Sample", { { "type", Uplifter }, { "bars", 2 }, { "noise", 50 }, { "tone", 20 }, { "synth", 15 }, { "smix", 100 }, { "sfit", 1 }, { "sshape", 0 }, { "reverb", 30 }, { "spliceKind", kRise }, { "spliceLength", lAny } } },
+            { "Splice Reverse Swell", { { "type", ReverseCrash }, { "bars", 1 }, { "synth", 35 }, { "smix", 90 }, { "sfit", 1 }, { "sshape", 20 }, { "spliceKind", kReverse }, { "spliceLength", lAny } } },
+            { "Splice Riser Flipped Down", { { "type", Downlifter }, { "bars", 2 }, { "synth", 40 }, { "smix", 85 }, { "sfit", 1 }, { "srev", 1 }, { "sshape", 30 }, { "spliceKind", kRise }, { "spliceLength", lLong } } },
+            { "Splice Downlifter", { { "type", Downlifter }, { "bars", 2 }, { "synth", 40 }, { "smix", 90 }, { "sfit", 0 }, { "salign", 0 }, { "sshape", 10 }, { "spliceKind", kDown }, { "spliceLength", lAny } } },
+            { "Splice Impact And Sub", { { "type", SubDrop }, { "bars", 1 }, { "pto", 24 }, { "synth", 70 }, { "smix", 90 }, { "sfit", 0 }, { "salign", 0 }, { "sshape", 0 }, { "spliceKind", kImpact }, { "spliceLength", lAny } } },
+            { "Splice Impact Boom", { { "type", Impact }, { "bars", 1 }, { "reverb", 70 }, { "synth", 50 }, { "smix", 95 }, { "sfit", 0 }, { "salign", 0 }, { "sshape", 0 }, { "spliceKind", kImpact }, { "spliceLength", lShort } } },
+            { "Splice Sweep Layer", { { "type", NoiseSweep }, { "bars", 1 }, { "synth", 40 }, { "smix", 85 }, { "sfit", 1 }, { "sshape", 60 }, { "spliceKind", kSweep }, { "spliceLength", lAny } } },
+            { "Splice Techno Wash", { { "type", NoiseSweep }, { "bars", 3 }, { "reverb", 75 }, { "synth", 40 }, { "smix", 85 }, { "sfit", 1 }, { "sshape", 60 }, { "spliceKind", kSweep }, { "spliceLength", lLong } } },
+            { "Splice House Build", { { "type", SnareRoll }, { "bars", 3 }, { "synth", 60 }, { "smix", 75 }, { "sfit", 1 }, { "sshape", 40 }, { "spliceKind", kRise }, { "spliceLength", lLong } } },
+            { "Splice Reverse Into Drop", { { "type", ReverseCrash }, { "bars", 0 }, { "synth", 30 }, { "smix", 90 }, { "sfit", 0 }, { "salign", 1 }, { "srev", 1 }, { "sshape", 0 }, { "spliceKind", kImpact }, { "spliceLength", lAny } } },
+        });
+    }
+
     std::vector<skazi::Preset> build()
     {
         const auto defs = skazi::defaultValues (paramDefs());
@@ -71,6 +188,17 @@ namespace
         factory ("Laser Rain", { { "type", Laser }, { "bars", 1 }, { "delay", 50 } });
         factory ("Reverse Wash", { { "type", ReverseCrash }, { "bars", 1 } });
         factory ("Sub Bomb", { { "type", SubDrop }, { "bars", 1 }, { "pto", 24 } });
+
+        // Hand-made banks: by job, by genre, and ones that layer the user's own Splice samples
+        designed ([&] (const char* folder, std::initializer_list<Designed> items)
+        {
+            for (auto& d : items)
+            {
+                skazi::Preset p { d.name, folder, defs };
+                for (auto& [id, v] : d.changes) p.values[id] = v;
+                list.push_back (std::move (p));
+            }
+        });
 
         int g = 0;
         for (int type = 0; type < NumTypes; ++type)
@@ -98,6 +226,12 @@ skazi::Preset randomPreset (juce::Random& rng)
     juce::Random r (rng.nextInt64());
     skazi::PresetGen gen { r, p.values };
     style (gen, r.nextInt (NumTypes));
+    // the Splice layer too, for whoever has a sample loaded
+    gen.range ("synth", 40, 100);
+    gen.set ("sfit", (float) gen.pick ({ 0, 1, 1, 2 }));
+    gen.set ("salign", gen.chance (0.7f) ? 1.0f : 0.0f);
+    gen.range ("sshape", 0, 80);
+    gen.set ("srev", gen.chance (0.15f) ? 1.0f : 0.0f);
     return p;
 }
 } // namespace bamba

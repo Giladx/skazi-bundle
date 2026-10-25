@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary (Apple Silicon + Intel)")
 
-project(BAMBA VERSION 1.0.0)
+project(BAMBA VERSION 1.1.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -36,11 +36,13 @@ juce_add_plugin(Bamba
     VST3_CATEGORIES          Instrument Synth
     AU_MAIN_TYPE             kAudioUnitType_MusicDevice)
 
-target_sources(Bamba PRIVATE
+set(BAMBA_SOURCES
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/BambaEngine.cpp
-    Source/Presets.cpp)
+    Source/Presets.cpp
+    Source/RiserLibrary.cpp)
+target_sources(Bamba PRIVATE ${BAMBA_SOURCES})
 
 # Save the SKAZI logo as ../Resources/skazi_logo.png to use it instead of the drawn stand-in
 set(LOGO "${CMAKE_CURRENT_SOURCE_DIR}/../Resources/skazi_logo.png")
@@ -56,12 +58,21 @@ target_compile_definitions(Bamba PUBLIC
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
-option(BAMBA_TESTS "Build the engine test" OFF)
+# Engine / preset / Splice-library test, and a tool that renders the editor to a PNG
+option(BAMBA_TESTS "Build the BAMBA tests and tools" OFF)
 if(BAMBA_TESTS)
-    juce_add_console_app(BambaTest PRODUCT_NAME "BambaTest")
-    target_sources(BambaTest PRIVATE Tests/BambaTest.cpp Source/BambaEngine.cpp Source/Presets.cpp)
-    target_compile_definitions(BambaTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
-    target_link_libraries(BambaTest PRIVATE juce::juce_audio_processors juce::juce_recommended_config_flags)
+    foreach(tool Test SkinShot)
+        juce_add_console_app(Bamba${tool} PRODUCT_NAME "Bamba${tool}")
+        target_sources(Bamba${tool} PRIVATE Tests/Bamba${tool}.cpp ${BAMBA_SOURCES})
+        target_include_directories(Bamba${tool} PRIVATE Source)
+        target_compile_definitions(Bamba${tool} PRIVATE
+            JucePlugin_Name="BAMBA" JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_MODAL_LOOPS_PERMITTED=1)
+        target_link_libraries(Bamba${tool} PRIVATE juce::juce_audio_utils juce::juce_recommended_config_flags)
+        if(TARGET BambaData)
+            target_link_libraries(Bamba${tool} PRIVATE BambaData)
+            target_compile_definitions(Bamba${tool} PRIVATE SHAK_HAS_LOGO=1)
+        endif()
+    endforeach()
 endif()
 
 target_link_libraries(Bamba

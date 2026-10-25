@@ -18,6 +18,9 @@ public:
     // Parameters that presets, RANDOM and the like must leave exactly as the user set them
     virtual bool keepOnPresetChange (const juce::String& /*paramId*/) const { return false; }
 
+    // Called on the message thread after loadPreset picks a preset (its values arrive with the fade)
+    virtual void presetLoaded (const Preset&) {}
+
     float v (const char* id) const { return apvts.getRawParameterValue (id)->load(); }
 
     void loadPreset (int index)
@@ -29,6 +32,7 @@ public:
         presetLabel = list[(size_t) index].category + juce::String::fromUTF8 (" \xc2\xb7 ") + list[(size_t) index].name;
         const auto values = list[(size_t) index].values;
         fader.change ([this, values] { applyValues (values); });
+        presetLoaded (list[(size_t) index]);
     }
 
     void randomizeAll()
