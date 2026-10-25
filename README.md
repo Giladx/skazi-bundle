@@ -11,7 +11,7 @@ Every plugin uses the vendor name **SKAZI**, so DAWs list them together.
 | `FilterFish` | The FilterFish | Filter FX |
 | `Subich` | SUBICH | Bass + sub bass synth: 2 osc, sub, 2 filters, 2 LFOs, wheels, 1000 presets |
 | `Bamba` | BAMBA | Riser & FX maker (uplifters, impacts, rolls, lasers...) |
-| `Tahini` | TAHINI | Space delay + reverb with duck and freeze |
+| `Tahini` | TAHINI | Space delay + reverb: 7 delay types (ping-pong, stereo, tape, digital, BBD, multi-tap, dual), resonant low/high cut and tape/tube/fuzz/crush drive inside the echo loop, pitch on the repeats (+-24 st, shimmer blend), reverse, tape stops, reverb with duck and freeze, 250 presets |
 | `Zhug` | ZHUG | Saturator + widener, 4x oversampled, multiband |
 | `Bully` | BULLY | Wavetable synth: 3 osc with dual warp, 2 filters, 10 LFOs, chaos, mod matrix, FX rack, arp, analog character (drift, saturation, boost, spread), SHARP 24 zero-delay-feedback ladder filter, 462 presets |
 | `Kickass` | KICKASS | Kick drum synth: two-stage pitch (snap + sweep), hold/decay, 3-band EQ, sample layer with a browser for your own Splice kicks, key track, 50 presets |
