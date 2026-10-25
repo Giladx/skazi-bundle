@@ -501,7 +501,7 @@ void SynthPanel::resized()
 void SynthPanel::stepPreset (int delta)
 {
     const int n = processor.getNumPrograms();
-    processor.setCurrentProgram ((processor.getCurrentProgram() + delta + n) % n);
+    processor.selectPreset ((processor.getCurrentProgram() + delta + n) % n);
 }
 
 void SynthPanel::showPresetMenu()
@@ -537,7 +537,7 @@ void SynthPanel::showPresetMenu()
                             if (result >= userBase && result - userBase < userFiles.size())
                                 processor.loadUserPreset (userFiles[result - userBase]);
                             else if (result > 0 && result < userBase)
-                                processor.setCurrentProgram (result - 1);
+                                processor.selectPreset (result - 1);
                         });
 }
 

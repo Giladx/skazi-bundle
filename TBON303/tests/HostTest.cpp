@@ -7,6 +7,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_events/juce_events.h>
 #include <cstdio>
+#include <thread>
 
 namespace
 {
@@ -95,6 +96,44 @@ int main (int argc, char** argv)
     check (plugin != nullptr, "instantiated " + error);
     if (plugin == nullptr)
         return 1;
+
+    // How long a preset change and a new instance take: both run on threads the DAW waits on
+    {
+        for (int i = 0; i < 20; ++i)
+            plugin->setCurrentProgram (i * 17);   // first visit measures each preset's level once
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        for (int i = 0; i < 20; ++i)
+            plugin->setCurrentProgram (i * 17);   // second visit: remembered, so it must be quick
+        const double perPreset = (juce::Time::getMillisecondCounterHiRes() - t0) / 20.0;
+
+        // A host sending a program change from its audio thread must get control back at once;
+        // the preset then loads on the message thread.
+        double audioThreadMs = 0.0;
+        std::thread audio ([&]
+        {
+            const auto ta = juce::Time::getMillisecondCounterHiRes();
+            plugin->setCurrentProgram (321);
+            audioThreadMs = juce::Time::getMillisecondCounterHiRes() - ta;
+        });
+        audio.join();
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (300);
+        check (audioThreadMs < 2.0 && plugin->getCurrentProgram() == 321,
+               juce::String::formatted ("program change from the audio thread returns in %.2f ms, preset %d loads after",
+                                        audioThreadMs, plugin->getCurrentProgram() + 1));
+        const auto t1 = juce::Time::getMillisecondCounterHiRes();
+        auto another = formats.createPluginInstance (*found[0], 44100.0, 512, error);
+        const double create = juce::Time::getMillisecondCounterHiRes() - t1;
+        another.reset();
+        check (perPreset < 5.0, juce::String::formatted ("preset change (already measured) takes %.2f ms", perPreset));
+
+        // A host may ask for every program name at once (program lists, name-to-value lookups)
+        const auto t2 = juce::Time::getMillisecondCounterHiRes();
+        for (int i = 0; i < plugin->getNumPrograms(); ++i)
+            plugin->getProgramName (i);
+        const double allNames = juce::Time::getMillisecondCounterHiRes() - t2;
+        check (allNames < 50.0, juce::String::formatted ("all %d program names take %.1f ms", plugin->getNumPrograms(), allNames));
+        check (create < 1000.0, juce::String::formatted ("new instance takes %.0f ms", create));
+    }
 
     plugin->enableAllBuses();
     plugin->setPlayConfigDetails (0, 2, 44100.0, 512);
