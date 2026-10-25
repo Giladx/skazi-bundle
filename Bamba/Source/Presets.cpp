@@ -267,6 +267,7 @@ skazi::Preset randomPreset (juce::Random& rng)
     gen.set ("srev", gen.chance (0.15f) ? 1.0f : 0.0f);
     gen.set ("rrate", (float) gen.pick ({ 0, 0, 1, 3, 4, 5, 5, 6 }));
     gen.range ("rdecay", 30, 80);
+    gen.set ("rshift", 0);
     return p;
 }
 } // namespace bamba

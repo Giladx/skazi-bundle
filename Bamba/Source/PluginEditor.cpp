@@ -73,12 +73,12 @@ void BambaDisplay::paint (Graphics& g)
             if (s.rollRate == RollFree)
             {
                 const float rise = std::pow (p, std::pow (2.0f, (s.curve - 0.5f) * 4.0f));
-                rollPh += 2.0 * std::pow (4.0, (double) rise) * beats / (double) w;
+                rollPh += juce::jmin (64.0, 2.0 * std::pow (4.0, (double) rise) * std::exp2 ((double) s.rollShift)) * beats / (double) w;
                 phase = rollPh - std::floor (rollPh);
             }
             else
             {
-                const double hits = p * beats * rollHitsPerBeat (s.rollRate, p);
+                const double hits = p * beats * rollHitsPerBeat (s.rollRate, p, s.rollShift);
                 phase = hits - std::floor (hits);
             }
             const double k = 6.0 * std::pow (5.0, (s.rollDecay - 0.5) * 2.0);
@@ -330,6 +330,9 @@ BambaEditor::BambaEditor (BambaProcessor& p)
     outMeter = &addMeter (p.engine.uiOut);
     rateRow = &addChoiceRow ("rrate");
     rdecay = &addKnob ("rdecay", "DECAY", red, "%", 34);
+    rshift = &addKnob ("rshift", "RATE", red, "", 34);
+    rshift->slider.setTooltip ("Moves the roll speed - automate it: in FREE it speeds up or slows down smoothly, "
+                               "in BUILD and 1/2 .. 1/128 it steps along the grid (centre = the button you picked)");
     roll->slider.setTooltip ("Roll gate amount (SNARE ROLL always rolls fully)");
     rdecay->slider.setTooltip ("How short each roll hit is: low = smooth pulses, high = tight snare hits");
 
@@ -392,7 +395,8 @@ void BambaEditor::layout()
         const int ry = 422;
         panel ({ 20, ry, 560, 96 }, "ROLL + QUANTIZE");
         label ({ 32, ry + 30, 300, 12 }, "FREE = SMOOTH SPEED-UP   BUILD = 1/4 > 1/8 > 1/16 > 1/32");
-        rateRow->setBounds (32, ry + 48, 420, 34);
+        rateRow->setBounds (32, ry + 48, 360, 34);
+        put (*rshift, 398, ry + 26, 34, 52);
         put (*roll, 456, ry + 26, 34, 52);
         put (*rdecay, 514, ry + 26, 34, 52);
 
@@ -446,6 +450,11 @@ void BambaEditor::tick()
         browser.refresh (scanning);
     }
     alignBox->setEnabled (bp.settings().sampleFit == FitOriginal); // STRETCH and VARISPEED always fill the bars
+    if (const int rr = (int) bp.v ("rrate"); rr != shownRollRate)
+    {
+        shownRollRate = rr; // RATE shows the speed it gives with the chosen mode
+        rshift->setFormatter ([this] (double v) { return rollRateText ((int) bp.v ("rrate"), (float) v); });
+    }
     if (bp.getSampleFile() != shownFile)
     {
         shownFile = bp.getSampleFile();

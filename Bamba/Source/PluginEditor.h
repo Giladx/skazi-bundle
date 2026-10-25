@@ -63,7 +63,8 @@ private:
     juce::ComboBox *barsBox, *fitBox, *alignBox;
     skazi::ParamToggle* revBtn;
     skazi::Knob *curve, *offset, *noise, *color, *tone, *pfrom, *pto, *sweep, *reso, *roll, *width, *phaser, *reverb, *delay, *gain;
-    skazi::Knob *smix, *synth, *stune, *sshape, *rdecay, *synfx, *smpfx;
+    skazi::Knob *smix, *synth, *stune, *sshape, *rdecay, *rshift, *synfx, *smpfx;
+    int shownRollRate = -1;
     skazi::Meter* outMeter;
     int shownVersion = -1, shownKind = -2, shownLength = -1;
     bool shownScanning = false;

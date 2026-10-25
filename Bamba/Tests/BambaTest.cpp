@@ -252,6 +252,25 @@ int main()
         expect (q == 4 && e8 == 8 && s16 == 16, "ROLL 1/4, 1/8, 1/16: 4, 8, 16 hits in a bar",
                 juce::String (q) + ", " + juce::String (e8) + ", " + juce::String (s16));
         t.rollRate = RollBuild; t.bars = 4; // 8 s: 2 bars of 1/4... a bar each of 1/4, 1/8, 1/16, 1/32 over 4 bars
+        t.rollRate = Roll8; t.rollShift = 1.0f;
+        const int shifted = hits (t);
+        t.rollShift = 0.0f;
+        expect (shifted == 16, "RATE +1 moves 1/8 up to 1/16", juce::String (shifted) + " hits");
+        expect (rollHitsPerBeat (Roll2, 0, -6) == 0.5 && rollHitsPerBeat (Roll2, 0, 6) == 32.0 && rollHitsPerBeat (Roll16, 0, 0.4f) == 4.0
+                    && rollHitsPerBeat (RollBuild, 0.9f, -2) == 2.0 && rollRateText (Roll8, 2) == "1/32" && rollRateText (RollFree, 1) == "x2.00",
+                "RATE steps the grid 1/2 .. 1/128 and stays in range");
+        {
+            // automating RATE in FREE: the roll speeds up smoothly, no clicks or NaNs
+            auto f = s; f.trigger = Sync; f.roll = 1; f.rollRate = RollFree;
+            bool ok = true;
+            for (float sh : { -6.0f, -2.5f, 0.0f, 1.7f, 6.0f })
+            {
+                f.rollShift = sh;
+                const auto r = render (f, 2.5, { 0 });
+                ok = ok && r.finite && r.peak <= 1.0f && r.rms > 0.005;
+            }
+            expect (ok, "RATE in FREE: -6 .. +6 all clean");
+        }
         expect (rollHitsPerBeat (RollBuild, 0.1f) == 1.0 && rollHitsPerBeat (RollBuild, 0.9f) == 8.0
                     && rollHitsPerBeat (Roll2, 0) == 0.5 && rollHitsPerBeat (Roll128, 0) == 32.0, "BUILD steps 1/4 > 1/32; 1/2 .. 1/128 rates");
 

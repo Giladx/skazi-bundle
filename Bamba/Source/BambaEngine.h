@@ -15,7 +15,10 @@ enum SampleAlign { AlignStart, AlignEnd };
 // ROLL timing: FREE speeds up smoothly (1.0 behaviour), BUILD steps 1/4 -> 1/8 -> 1/16 -> 1/32 on the beat,
 // the rest are a fixed note value locked to the host's beat grid
 enum RollRate { RollFree, RollBuild, Roll2, Roll4, Roll8, Roll16, Roll32, Roll64, Roll128 };
-double rollHitsPerBeat (int rate, float progress); // 0 for FREE
+// Hits per beat for a quantized roll (0 for FREE). shift is the RATE knob: whole steps of note value
+// (+1 = twice as fast), so automating it moves the roll along the grid: 1/2 .. 1/128.
+double rollHitsPerBeat (int rate, float progress, float shift = 0.0f);
+juce::String rollRateText (int rate, float shift); // what the RATE knob shows
 
 const std::vector<skazi::ParamDef>& paramDefs();
 int barsFor (int barsChoice); // 1, 2, 4, 8, 16, 24
@@ -30,7 +33,7 @@ struct Settings
     float synth = 1.0f, sampleLevel = 0.8f, sampleTune = 0, sampleShape = 0.3f;
     int sampleFit = FitStretch, sampleAlign = AlignEnd; bool sampleReverse = false;
     // roll quantize and mixer
-    int rollRate = RollFree; float rollDecay = 0.5f, synthFx = 1.0f, sampleFx = 1.0f;
+    int rollRate = RollFree; float rollDecay = 0.5f, rollShift = 0.0f, synthFx = 1.0f, sampleFx = 1.0f;
     static Settings fromValues (const std::function<float (const char*)>& v);
 };
 

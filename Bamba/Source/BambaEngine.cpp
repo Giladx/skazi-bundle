@@ -51,6 +51,7 @@ const std::vector<skazi::ParamDef>& paramDefs()
         { "rdecay", "Roll Decay", P::Float, 0, 100, 50, "%", 0.1f },
         { "synfx", "Synth FX Send", P::Float, 0, 100, 100, "%", 0.1f },
         { "smpfx", "Sample FX Send", P::Float, 0, 100, 100, "%", 0.1f },
+        { "rshift", "Roll Rate", P::Float, -6, 6, 0, "", 0.01f }, // the automatable RATE knob
     };
     return defs;
 }
@@ -70,6 +71,7 @@ Settings Settings::fromValues (const std::function<float (const char*)>& v)
     s.synth = v ("synth") * 0.01f; s.sampleLevel = v ("smix") * 0.01f; s.sampleTune = v ("stune"); s.sampleShape = v ("sshape") * 0.01f;
     s.sampleFit = (int) v ("sfit"); s.sampleAlign = (int) v ("salign"); s.sampleReverse = v ("srev") > 0.5f;
     s.rollRate = (int) v ("rrate"); s.rollDecay = v ("rdecay") * 0.01f; s.synthFx = v ("synfx") * 0.01f; s.sampleFx = v ("smpfx") * 0.01f;
+    s.rollShift = v ("rshift");
     return s;
 }
 
@@ -98,11 +100,22 @@ SamplePtr makeSample (const juce::AudioBuffer<float>& audio, double rate)
     return d;
 }
 
-double rollHitsPerBeat (int rate, float progress)
+double rollHitsPerBeat (int rate, float progress, float shift)
 {
     if (rate == RollFree) return 0.0;
-    if (rate == RollBuild) return progress < 0.25f ? 1.0 : progress < 0.5f ? 2.0 : progress < 0.75f ? 4.0 : 8.0;
-    return 0.5 * std::exp2 (juce::jlimit (0, 6, rate - Roll2)); // 1/2 = half a hit per beat ... 1/128 = 32
+    // steps from 1/2 (0) to 1/128 (6); BUILD climbs 1/4 > 1/8 > 1/16 > 1/32 (1 .. 4)
+    const int base = rate == RollBuild ? (progress < 0.25f ? 1 : progress < 0.5f ? 2 : progress < 0.75f ? 3 : 4) : rate - Roll2;
+    return 0.5 * std::exp2 (juce::jlimit (0, 6, base + (int) std::lround (shift))); // 1/2 = half a hit per beat ... 1/128 = 32
+}
+
+juce::String rollRateText (int rate, float shift)
+{
+    static const char* const names[] = { "1/2", "1/4", "1/8", "1/16", "1/32", "1/64", "1/128" };
+    if (rate == RollFree) return "x" + juce::String (std::exp2 (shift), std::exp2 (shift) < 10 ? 2 : 0);
+    const int steps = (int) std::lround (shift);
+    if (rate == RollBuild)
+        return steps == 0 ? juce::String ("BUILD") : names[juce::jlimit (0, 6, 1 + steps)] + juce::String (" >");
+    return names[juce::jlimit (0, 6, rate - Roll2 + steps)];
 }
 
 SamplePlacement placeSample (const Settings& s, double sampleSeconds, double lenSeconds)
@@ -447,13 +460,13 @@ void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi
                 double phase;
                 if (s.rollRate == RollFree)
                 {
-                    rollPh += 2.0 * std::pow (4.0, (double) rise) * bpm / 60.0 / sr;
+                    rollPh += juce::jmin (64.0, 2.0 * std::pow (4.0, (double) rise) * std::exp2 ((double) s.rollShift)) * bpm / 60.0 / sr;
                     phase = frac (rollPh);
                 }
                 else
                 {
                     const double beat = ht.playing ? ppq + i * bpm / 60.0 / sr : evT * bpm / 60.0 / sr;
-                    phase = frac (beat * rollHitsPerBeat (s.rollRate, p));
+                    phase = frac (beat * rollHitsPerBeat (s.rollRate, p, s.rollShift));
                 }
                 const double k = 6.0 * std::pow (5.0, (s.rollDecay - 0.5) * 2.0);
                 gate = 1.0f - rollUse * (1.0f - (float) std::exp (-phase * k));
