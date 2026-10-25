@@ -5,7 +5,7 @@ Every plugin uses the vendor name **SKAZI**, so DAWs list them together.
 
 | Folder | Plugin | Type |
 |---|---|---|
-| `SKAZI-Synth` | SKAZI | Synth (instrument) |
+| `SKAZI-Synth` | SKAZI | Psy / acid / VA synth: Virus-style supersaw unison and analog drift, wavetables (load your own WAV), FOLD/PWM/ASYM shaping, arpeggiator, step sequencer with per-step locks, 10 distortion types, full FX rack with FX filter and bass-mono width, PERFORM page (4 macros, A/B morph, kick duck, voice cards), RANDOM that rolls every section, BULLY skin, 3,650 presets |
 | `Shaksuka` | SHAKSUKA | Random chop & glitch FX |
 | `PitaPump` | PITA PUMP | Sidechain LFO tool |
 | `FilterFish` | The FilterFish | Filter FX |
