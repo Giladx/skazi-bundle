@@ -13,10 +13,11 @@ on:
       - "**.md"
   workflow_dispatch:
 
-# a newer push replaces a build still running, so releases never come out of order
+# one build per branch at a time: a running build always finishes (and releases), the newest push waits
+# its turn and older waiting pushes are dropped, so releases stay in order without starving each other
 concurrency:
   group: bundle-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   mac:
