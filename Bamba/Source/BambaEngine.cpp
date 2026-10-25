@@ -29,7 +29,7 @@ const std::vector<skazi::ParamDef>& paramDefs()
         { "color", "Noise Color", P::Float, 0, 100, 50, "%", 0.1f },
         { "tone", "Tone", P::Float, 0, 100, 40, "%", 0.1f },
         { "pfrom", "Pitch From", P::Float, -24, 24, -12, "st", 1 },
-        { "pto", "Pitch To", P::Float, -24, 48, 24, "st", 1 },
+        { "pto", "Pitch To", P::Float, -24, 72, 24, "st", 1 }, // up to 6 octaves for long uplifts (was +48)
         { "sweep", "Filter Sweep", P::Float, 0, 100, 75, "%", 0.1f },
         { "reso", "Resonance", P::Float, 0, 100, 40, "%", 0.1f },
         { "roll", "Roll", P::Float, 0, 100, 0, "%", 0.1f },
@@ -52,6 +52,7 @@ const std::vector<skazi::ParamDef>& paramDefs()
         { "synfx", "Synth FX Send", P::Float, 0, 100, 100, "%", 0.1f },
         { "smpfx", "Sample FX Send", P::Float, 0, 100, 100, "%", 0.1f },
         { "rshift", "Roll Rate", P::Float, -6, 6, 0, "", 0.01f }, // the automatable RATE knob
+        { "pcurve", "Pitch Curve", P::Float, 0, 100, 50, "%", 0.1f },
     };
     return defs;
 }
@@ -72,6 +73,7 @@ Settings Settings::fromValues (const std::function<float (const char*)>& v)
     s.sampleFit = (int) v ("sfit"); s.sampleAlign = (int) v ("salign"); s.sampleReverse = v ("srev") > 0.5f;
     s.rollRate = (int) v ("rrate"); s.rollDecay = v ("rdecay") * 0.01f; s.synthFx = v ("synfx") * 0.01f; s.sampleFx = v ("smpfx") * 0.01f;
     s.rollShift = v ("rshift");
+    s.pitchCurve = v ("pcurve") * 0.01f;
     return s;
 }
 
@@ -125,6 +127,11 @@ SamplePlacement placeSample (const Settings& s, double sampleSeconds, double len
     if (s.sampleFit != FitOriginal) return { 0.0, lenSeconds };
     if (s.sampleAlign == AlignStart) return { 0.0, sampleSeconds };
     return { lenSeconds - sampleSeconds, sampleSeconds };
+}
+
+float bendPitch (float pitch, float pitchCurve)
+{
+    return std::pow (juce::jlimit (0.0f, 1.0f, pitch), std::pow (2.0f, (pitchCurve - 0.5f) * 4.0f));
 }
 
 Shape shapeAt (int type, float p, float curve, float lenSec)
@@ -294,7 +301,8 @@ void Engine::sample (const Settings& s, float& l, float& r)
     const float sweep = rnd ? rSweep : s.sweep, rollAmt = rnd ? rRoll : s.roll;
     const float p = (float) juce::jmin (0.99999, t / len);
     const float lenSec = (float) (len / sr), tSec = (float) (t / sr);
-    const auto sh = shapeAt (type, p, s.curve, lenSec);
+    auto sh = shapeAt (type, p, s.curve, lenSec);
+    sh.pitch = bendPitch (sh.pitch, s.pitchCurve);
     const float e = std::pow (2.0f, (s.curve - 0.5f) * 4.0f);
     const float rise = std::pow (p, e);
     const double noteMul = std::exp2 (noteSemis / 12.0);

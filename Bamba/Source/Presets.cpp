@@ -109,6 +109,9 @@ namespace
             { "Quarter Snare Stomp", { { "type", SnareRoll }, { "roll", 100 }, { "bars", 1 }, { "rrate", 3 }, { "rdecay", 80 }, { "noise", 90 }, { "tone", 60 }, { "reverb", 60 } } },
         });
         bank ("PITCHED UPLIFTS", {
+            { "6 Octave Climb", { { "type", Uplifter }, { "bars", 3 }, { "curve", 55 }, { "pcurve", 35 }, { "noise", 25 }, { "tone", 90 }, { "pfrom", -12 }, { "pto", 72 }, { "sweep", 80 }, { "reso", 40 }, { "width", 90 }, { "reverb", 55 } } },
+            { "Smooth Pitch Glide", { { "type", Uplifter }, { "bars", 3 }, { "curve", 60 }, { "pcurve", 15 }, { "noise", 30 }, { "tone", 85 }, { "pfrom", -24 }, { "pto", 48 }, { "sweep", 85 }, { "reso", 35 }, { "phaser", 40 }, { "reverb", 60 } } },
+            { "Late Pitch Launch", { { "type", Uplifter }, { "bars", 4 }, { "curve", 55 }, { "pcurve", 85 }, { "noise", 45 }, { "tone", 80 }, { "pfrom", -12 }, { "pto", 60 }, { "sweep", 95 }, { "reso", 50 }, { "reverb", 50 }, { "delay", 30 } } },
             { "Octave Scream", { { "type", Uplifter }, { "bars", 2 }, { "noise", 20 }, { "tone", 90 }, { "pfrom", -12 }, { "pto", 24 }, { "sweep", 70 }, { "reso", 50 }, { "width", 90 } } },
             { "Two Octave Rocket", { { "type", Uplifter }, { "bars", 3 }, { "noise", 30 }, { "tone", 85 }, { "pfrom", -24 }, { "pto", 24 }, { "curve", 70 } } },
             { "Supersaw Lift", { { "type", Uplifter }, { "bars", 2 }, { "noise", 25 }, { "tone", 95 }, { "width", 100 }, { "pfrom", 0 }, { "pto", 12 }, { "reso", 20 }, { "sweep", 80 }, { "phaser", 30 } } },
@@ -243,6 +246,27 @@ namespace
                 style (gen, type);
                 list.push_back (std::move (p));
             }
+
+        // Uplifts and rises first. Impacts, downlifters, lasers, sirens and random FX move to their own
+        // FX folders at the end of the list (names unchanged, so nothing that refers to them breaks).
+        for (auto& p : list)
+        {
+            if (p.name == "Init") continue;
+            switch ((int) p.values.at ("type"))
+            {
+                case Downlifter:      p.category = "FX: DOWNLIFTERS"; break;
+                case Impact: case SubDrop: p.category = "FX: IMPACTS"; break;
+                case Laser: case Siren:    p.category = "FX: LASER + SIREN"; break;
+                case RandomFx:        p.category = "FX: RANDOM"; break;
+                default:
+                    if (p.category == "UPLIFT")             p.category = "MORE UPLIFTS";
+                    else if (p.category == "NOISE SWEEP")   p.category = "MORE NOISE SWEEPS";
+                    else if (p.category == "SNARE ROLL")    p.category = "MORE SNARE ROLLS";
+                    else if (p.category == "REVERSE CRASH") p.category = "MORE REVERSE SWELLS";
+                    break;
+            }
+        }
+        std::stable_partition (list.begin(), list.end(), [] (const skazi::Preset& p) { return ! p.category.startsWith ("FX:"); });
         return list;
     }
 }

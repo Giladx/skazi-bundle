@@ -34,6 +34,7 @@ struct Settings
     int sampleFit = FitStretch, sampleAlign = AlignEnd; bool sampleReverse = false;
     // roll quantize and mixer
     int rollRate = RollFree; float rollDecay = 0.5f, rollShift = 0.0f, synthFx = 1.0f, sampleFx = 1.0f;
+    float pitchCurve = 0.5f; // 0.5 = pitch follows CURVE like 1.0; lower climbs early, higher saves the climb for the end
     static Settings fromValues (const std::function<float (const char*)>& v);
 };
 
@@ -56,6 +57,8 @@ SamplePlacement placeSample (const Settings& s, double sampleSeconds, double len
 // The shape of an effect at progress p (0..1) through its length
 struct Shape { float amp, pitch, filter; };
 Shape shapeAt (int type, float p, float curve, float lengthSeconds);
+// The pitch movement bent by PITCH CURVE on top of the effect's own curve
+float bendPitch (float pitch, float pitchCurve);
 
 class Engine
 {

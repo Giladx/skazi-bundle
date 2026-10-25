@@ -96,6 +96,14 @@ int main()
     Settings s = Settings::fromValues ([] (const char* id) { return skazi::defaultValues (paramDefs()).at (id); });
     s.bars = 1; // 2 s at 120 bpm
     expect (s.trigger == Midi, "default: plays while the note is held");
+    {
+        // PITCH CURVE: 50% is exactly 1.0's pitch path; low climbs early, high saves it for the end
+        expect (bendPitch (0.3f, 0.5f) == 0.3f && bendPitch (0.3f, 0.1f) > 0.6f && bendPitch (0.3f, 0.9f) < 0.05f
+                    && bendPitch (1.0f, 0.0f) == 1.0f && bendPitch (0.0f, 1.0f) == 0.0f, "PITCH CURVE bends the climb, ends where it should");
+        auto t = s; t.trigger = Sync; t.pitchTo = 72; t.tone = 1; t.noise = 0; t.pitchCurve = 0.2f;
+        const auto r = render (t, 3.0, { 0 });
+        expect (r.finite && r.peak <= 1.0f && r.rms > 0.005, "PITCH TO +72: six octaves up stays clean");
+    }
     expect (barsFor (0) == 1 && barsFor (3) == 8 && barsFor (4) == 16 && barsFor (5) == 24, "lengths 1 .. 24 bars, 1.0 indexes unchanged");
     {
         auto t = s; t.trigger = Sync; t.bars = 24; t.reverb = 0; t.delay = 0; // 48 s at 120 bpm
@@ -446,10 +454,23 @@ int main()
         juce::StringArray folders;
         for (auto& p : list) folders.addIfNotAlreadyThere (p.category);
         bool all = true;
-        for (auto* f : { "SNARE ROLLS", "QUANTIZED UPLIFTS", "SHORT RISES", "LONG RISES", "DOWNLIFTERS", "NOISE SWEEPS", "PITCHED UPLIFTS", "FILTERED BUILDS", "REVERSE SWELLS",
-                         "IMPACTS", "PSYTRANCE", "TECHNO", "HOUSE", "SPLICE LAYER" })
+        for (auto* f : { "SNARE ROLLS", "QUANTIZED UPLIFTS", "SHORT RISES", "LONG RISES", "FX: DOWNLIFTERS", "FX: LASER + SIREN", "NOISE SWEEPS", "PITCHED UPLIFTS", "FILTERED BUILDS", "REVERSE SWELLS",
+                         "FX: IMPACTS", "PSYTRANCE", "TECHNO", "HOUSE", "SPLICE LAYER" })
             all = all && folders.contains (f);
         expect (all, "new preset folders", folders.joinIntoString (", "));
+
+        // every non-uplift sound lives in an FX folder, and those come last
+        bool fxLast = true, fxSorted = true, seenFx = false;
+        for (auto& p : list)
+        {
+            const bool fx = p.category.startsWith ("FX:");
+            if (seenFx && ! fx) fxLast = false;
+            seenFx = seenFx || fx;
+            const int t = (int) p.values.at ("type");
+            const bool notUp = t == Downlifter || t == Impact || t == SubDrop || t == Laser || t == Siren || t == RandomFx;
+            if (notUp != fx && p.name != "Init") fxSorted = false;
+        }
+        expect (fxLast && fxSorted, "impacts, downlifters and other FX: own section at the end");
     }
 
     // SPLICE LAYER presets with a sample loaded: clean and audible

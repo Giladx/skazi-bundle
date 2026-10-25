@@ -65,7 +65,8 @@ void BambaDisplay::paint (Graphics& g)
     for (int x = 0; x <= w; ++x)
     {
         const float p = (float) x / w;
-        const auto sh = shapeAt (shownType, p, s.curve, lenSec);
+        auto sh = shapeAt (shownType, p, s.curve, lenSec);
+        sh.pitch = bendPitch (sh.pitch, s.pitchCurve);
         float a = sh.amp;
         if (rollAmt > 0.0f)
         {
@@ -319,6 +320,8 @@ BambaEditor::BambaEditor (BambaProcessor& p)
     tone = &addKnob ("tone", "TONE", red, "%", 34);
     pfrom = &addKnob ("pfrom", "PITCH FROM", red, "st", 34);
     pto = &addKnob ("pto", "PITCH TO", red, "st", 34);
+    pcurve = &addKnob ("pcurve", "PITCH CURVE", skin::white, "%", 38);
+    pcurve->slider.setTooltip ("Shapes the pitch climb on its own: low = climbs early then glides, 50 = follows CURVE, high = saves the climb for the drop");
     sweep = &addKnob ("sweep", "FILTER SWEEP", red, "%", 66);
     reso = &addKnob ("reso", "RESO", red, "%", 34);
     roll = &addKnob ("roll", "ROLL", red, "%", 34);
@@ -414,6 +417,7 @@ void BambaEditor::layout()
     barsBox->setBounds (32, y + 52, 86, 24);
     put (*curve, 128, y + 32, 38, 56);
     put (*offset, 128, y + 100, 38, 56);
+    put (*pcurve, 116, y + 100, 38, 62);
 
     panel ({ 248, y, 270, h }, "SOURCE");
     put (*noise, 258, y + 32, 34, 78);
