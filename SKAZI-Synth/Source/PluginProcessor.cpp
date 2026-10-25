@@ -1077,10 +1077,11 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     }
     juce::dsp::AudioBlock<float> hostBlock (buffer);
     const float invF = 1.f / (float) F;
-    const bool distOn = pDistOn->load() > 0.5f;
+    bool distOn = pDistOn->load() > 0.5f;
     const int distType = (int) pDistType->load();
     const float distDrive = juce::jlimit (0.f, 1.f, pDistDrive->load() + gmod[D_Dist]);
-    const float distMix = pDistMix->load(), distTone = pDistTone->load();
+    const float distMix = juce::jlimit (0.f, 1.f, pDistMix->load() + gmod[D_DistMix]), distTone = pDistTone->load();
+    if (distMix < 0.0001f) distOn = false;   // mix 0 (the DRIVE macro at rest): nothing to do
     const int chunk = std::max (1, oversampleBlock);
 
     for (int c0 = 0; c0 < numSamples; c0 += chunk)

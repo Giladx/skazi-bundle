@@ -1858,6 +1858,27 @@ namespace
     }
 
     //==========================================================================
+    // The 4 PERFORM macros on every factory preset. At 0 they change nothing, so the presets sound as
+    // before; turned up: SQUELCH opens the filter and resonance, GROWL detunes and warps, DRIVE fades in
+    // the distortion, SPACE adds reverb and delay. No random draws, so the sounds themselves don't move.
+    void macros (Ctx& c)
+    {
+        if (! c.has ("dist_on"))
+        {
+            // transparent until DRIVE is turned up: distortion on at mix 0
+            c.set ("dist_on", 1.f); c.set ("dist_type", (float) DTube); c.set ("dist_drive", 0.45f); c.set ("dist_mix", 0.f);
+        }
+        c.mod (S_Macro1, D_Cut1, 0.35f);
+        c.mod (S_Macro3, D_DistMix, 0.8f);
+        c.mod (S_Macro4, D_Reverb, 0.35f);
+        c.mod (S_Macro2, D_Detune, 0.5f);
+        c.mod (S_Macro1, D_Res1, 0.25f);
+        c.mod (S_Macro3, D_Dist, 0.3f);
+        c.mod (S_Macro4, D_Delay, 0.25f);
+        c.mod (S_Macro2, D_Osc1Warp, 0.35f);
+    }
+
+    //==========================================================================
     // Extra flavour on top of every recipe so no two presets share the same effects or movement:
     // effects the recipe didn't use are added at random (basses stay tighter: less reverb/delay),
     // plus 0-3 extra mod-matrix routings on LFOs 6-8 (recipes use LFOs 1-5).
@@ -1913,6 +1934,7 @@ namespace
             default: c.mod (S_ModWheel, D_Detune, c.r (0.3f, 0.6f)); break;
         }
         fullFx (c, bassy);
+        macros (c);
     }
 
     void run (int gen, Ctx& c, int k)
@@ -2060,6 +2082,7 @@ namespace Presets
         run (cats[c].gen, ctx, l);
         // ... then every section is rolled again: oscillators, filters, envelopes, LFOs, effects, arp
         rollEverything (ctx, cats[c].gen);
+        macros (ctx);
         p.setParam ("volume", 0.6f); // randomizeSound measures the loudness and sets the final volume
         return cats[c].name;
     }

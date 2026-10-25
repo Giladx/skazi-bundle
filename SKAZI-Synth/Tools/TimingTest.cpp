@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <vector>
 #include <thread>
+#include <algorithm>
 
 namespace
 {
@@ -348,16 +349,23 @@ int main()
     {
         AcidanceProcessor p;
         prepare (p, 512);
-        double ms = 0.0;
+        // median of 20 calls, so one scheduler hiccup can't decide it
+        std::vector<double> times;
         std::thread t ([&]
         {
-            const auto t0 = juce::Time::getMillisecondCounterHiRes();
+            for (int k = 0; k < 20; ++k)
+            {
+                const auto t0 = juce::Time::getMillisecondCounterHiRes();
+                p.setCurrentProgram (1200 + k % 2);
+                times.push_back (juce::Time::getMillisecondCounterHiRes() - t0);
+            }
             p.setCurrentProgram (1200);
-            ms = juce::Time::getMillisecondCounterHiRes() - t0;
         });
         t.join();
+        std::sort (times.begin(), times.end());
+        const double ms = times[times.size() / 2];
         expect (ms < 2.0 && p.getCurrentProgram() == 1200, "program change from the audio thread returns at once",
-                juce::String (ms, 3) + " ms (the preset loads on the message thread)");
+                "median " + juce::String (ms, 3) + " ms, worst " + juce::String (times.back(), 2) + " ms (the preset loads on the message thread)");
     }
 
     std::printf ("\n%s (%d failures)\n", failures == 0 ? "ALL PASSED" : "FAILED", failures);

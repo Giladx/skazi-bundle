@@ -35,7 +35,7 @@ namespace Lists
                                                 "Sub Level", "Noise Level", "Filter 1 Cutoff", "Filter 2 Cutoff",
                                                 "Filter 1 Reso", "Filter 2 Reso", "Amp", "Pan",
                                                 "LFO 1 Rate", "LFO 2 Rate", "LFO 3 Rate", "LFO 4 Rate", "LFO 5 Rate", "LFO 6 Rate", "LFO 7 Rate", "LFO 8 Rate",
-                                                "Dist Drive", "Mod FX Mix", "Delay Mix", "Reverb Mix", "FX Filter Cutoff" };
+                                                "Dist Drive", "Mod FX Mix", "Delay Mix", "Reverb Mix", "FX Filter Cutoff", "Dist Mix" };
 }
 
 enum ModSource { S_None, S_Lfo1, S_Lfo2, S_Lfo3, S_Lfo4, S_Lfo5, S_Lfo6, S_Lfo7, S_Lfo8,
@@ -47,7 +47,7 @@ enum ModDest
     D_None, D_Osc1Pitch, D_Osc2Pitch, D_Osc1Wt, D_Osc2Wt, D_Osc1Level, D_Osc2Level, D_Osc1Warp, D_Osc2Warp,
     D_Detune, D_Sub, D_Noise, D_Cut1, D_Cut2, D_Res1, D_Res2, D_Amp, D_Pan,
     D_Lfo1Rate, D_Lfo2Rate, D_Lfo3Rate, D_Lfo4Rate, D_Lfo5Rate, D_Lfo6Rate, D_Lfo7Rate, D_Lfo8Rate,
-    D_Dist, D_ModFx, D_Delay, D_Reverb, D_FxCut, D_Count
+    D_Dist, D_ModFx, D_Delay, D_Reverb, D_FxCut, D_DistMix, D_Count
 };
 
 constexpr int kNumModSlots = 16;

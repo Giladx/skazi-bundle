@@ -175,6 +175,36 @@ int main()
                 "L/R difference " + juce::String (diff[0] * 100.0, 2) + "% -> " + juce::String (diff[1] * 100.0, 1) + "%");
     }
 
+    // 6. every factory preset has the 4 macros routed, and each one audibly changes the sound
+    {
+        int changed[kNumMacros] {};
+        const int picks[] = { 4, 360, 1003, 1260, 1600, 2700, 2900, 3005, 3260, 3510 };
+        for (int idx : picks)
+            for (int m = 0; m < kNumMacros; ++m)
+            {
+                std::vector<float> outs[2];
+                for (int v = 0; v < 2; ++v)
+                {
+                    AcidanceProcessor p;
+                    p.setCurrentProgram (idx);
+                    p.fader.flush();
+                    p.setParam ("drift", 0.f); p.setParam ("spread", 0.f);
+                    for (int r = 1; r <= 2; ++r) { p.setParam ("osc" + juce::String (r) + "_rphase", 0.f); }
+                    p.setParam ("macro" + juce::String (m + 1), (float) v);
+                    const bool seq = p.apvts.getRawParameterValue ("seq_on")->load() > 0.5f;
+                    if (seq) p.setParam ("run", 1.f);
+                    prepare (p);
+                    outs[v] = render (p, 48000, { note (0, seq ? 60 : 57), note (0, 60), note (0, 64) }).l;
+                }
+                double d = 0.0, e = 0.0;
+                for (size_t i = 0; i < outs[0].size(); ++i) { const double x = outs[1][i] - outs[0][i]; d += x * x; e += (double) outs[0][i] * outs[0][i]; }
+                if (std::sqrt (d / std::max (1.0e-12, e)) > 0.05) ++changed[m];
+            }
+        juce::String r;
+        for (int m = 0; m < kNumMacros; ++m) r << "M" << (m + 1) << " " << changed[m] << "/10  ";
+        expect (changed[0] >= 9 && changed[1] >= 7 && changed[2] >= 9 && changed[3] >= 9, "factory presets: each macro changes the sound", r);
+    }
+
     std::printf ("\n%s (%d failures)\n", failures == 0 ? "ALL PASSED" : "FAILED", failures);
     return failures == 0 ? 0 : 1;
 }
