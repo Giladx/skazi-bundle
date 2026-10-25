@@ -77,7 +77,7 @@ jobs:
             libxrandr-dev
       - name: Build Linux bundle
         env:
-          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.0.0' }}
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.1' }}
         run: bash linux/build_linux.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -100,13 +100,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "SKAZI Bundle $GITHUB_REF_NAME" \
-            --generate-notes
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "SKAZI Bundle $GITHUB_REF_NAME" \
+              --generate-notes
+          fi
           gh release upload "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            "release-assets/SKAZI-Bundle-Mac-universal/SKAZI Bundle.pkg" \
-            "release-assets/SKAZI-Bundle-Windows/SKAZI Bundle Setup.exe" \
+            --clobber \
+            "release-assets/SKAZI-Bundle-Mac-universal/SKAZI Bundle.pkg#SKAZI.Bundle.pkg" \
+            "release-assets/SKAZI-Bundle-Windows/SKAZI Bundle Setup.exe#SKAZI.Bundle.Setup.exe" \
             "release-assets/SKAZI-Bundle-Linux/SKAZI Bundle Linux.tar.gz" \
             "release-assets/SKAZI-Bundle-Linux/SKAZI Bundle Linux.deb"

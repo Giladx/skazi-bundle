@@ -12,7 +12,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD="${BUILD_DIR:-$ROOT/build-linux}"
 DIST="${DIST_DIR:-$ROOT/dist}"
 JOBS="${JOBS:-$(nproc)}"
-VERSION="${VERSION:-1.0.0}"
+VERSION="${VERSION:-1.1}"
 
 mkdir -p "$BUILD" "$DIST"
 
@@ -55,6 +55,7 @@ build Bamba       Bamba      "BAMBA"          FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
 build Tahini      Tahini     "TAHINI"         FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
 build Zhug        Zhug       "ZHUG"           FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
 build Bully       Bully      "BULLY"          FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
+build Kickass     Kickass    "KICKASS"        FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
 
 ARCHIVE="$DIST/SKAZI Bundle Linux.tar.gz"
 rm -f "$ARCHIVE"
@@ -77,7 +78,7 @@ printf '%s\n' \
     'Architecture: amd64' \
     'Maintainer: SKAZI' \
     'Description: SKAZI Bundle audio plugins and standalone applications' \
-    ' Nine SKAZI VST3 plugins and their standalone applications.' \
+    ' Ten SKAZI VST3 plugins and their standalone applications.' \
     > "$DEB_ROOT/DEBIAN/control"
 rm -f "$DEB"
 dpkg-deb --build --root-owner-group "$DEB_ROOT" "$DEB" >/dev/null

@@ -14,6 +14,7 @@ Every plugin uses the vendor name **SKAZI**, so DAWs list them together.
 | `Tahini` | TAHINI | Space delay + reverb with duck and freeze |
 | `Zhug` | ZHUG | Saturator + widener, 4x oversampled, multiband |
 | `Bully` | BULLY | Wavetable synth: 3 osc with dual warp, 2 filters, 10 LFOs, chaos, mod matrix, FX rack, arp, analog character (drift, saturation, boost, spread), 462 presets |
+| `Kickass` | KICKASS | Kick drum synth: two-stage pitch (snap + sweep), hold/decay, 3-band EQ, sample layer with a browser for your own Splice kicks, key track, 50 presets |
 
 `Common` holds the shared metal skin, knobs, preset bar and A/B code used by SUBICH, BAMBA, TAHINI and ZHUG.
 
@@ -64,7 +65,7 @@ machines; download them from the run's **Artifacts**. On a Linux host, run
 and the standalone applications under `/usr/lib/skazi-bundle`. CI builds on Ubuntu 22.04
 (glibc 2.35), a Debian-family compatibility baseline for newer Ubuntu and Debian systems;
 the tarball is available when a distro-specific package is not suitable. Pushing a tag such
-as `v1.0.0` runs all three builds and creates a GitHub Release with the Mac, Windows and
+as `v1.1` runs all three builds and creates a GitHub Release with the Mac, Windows and
 Linux packages.
 
 For Mac builds, `MAC_ARCH=universal` creates one package for Apple Silicon and Intel;
