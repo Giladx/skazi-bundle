@@ -5,7 +5,7 @@ Every plugin uses the vendor name **SKAZI**, so DAWs list them together.
 
 | Folder | Plugin | Type |
 |---|---|---|
-| `SKAZI-Synth` | SKAZI | Synth (instrument) |
+| `SKAZI-Synth` | SKAZI | Psy / acid / VA synth: Virus-style supersaw unison and analog drift, wavetables (load your own WAV), FOLD/PWM/ASYM shaping, arpeggiator, step sequencer with per-step locks, 10 distortion types, full FX rack with FX filter and bass-mono width, PERFORM page (4 macros, A/B morph, kick duck, voice cards), RANDOM that rolls every section, BULLY skin, 3,650 presets |
 | `Shaksuka` | SHAKSUKA | Random chop & glitch FX |
 | `PitaPump` | PITA PUMP | Sidechain LFO tool |
 | `FilterFish` | The FilterFish | Filter FX |
@@ -17,8 +17,9 @@ Every plugin uses the vendor name **SKAZI**, so DAWs list them together.
 | `Kickass` | KICKASS | Kick drum synth: two-stage pitch (snap + sweep), hold/decay, 3-band EQ, sample layer with a browser for your own Splice kicks, key track, 50 presets |
 | `TBON303` | SKAZI 303 (TBON 303) | Acid bass line synth: 303-style diode ladder filter with accent and slide, sub oscillator, 14 drive types, circuit mods, chorus/delay/reverb/widener, 16-step sequencer with pattern generator, screaming resonance (self-oscillates at the top of the knob), 544 presets incl. 32 HARD ACID |
 | `Salat` | SALAT | Glitch multi-FX: tempo-synced chopper (stutter, reverse, gate, tape stop, hold), drive, crush, resonant filter with synced LFO, ring mod, flanger/chorus, ping-pong delay, reverb, MAKE A SALAT randomizer, 104 presets |
+| `MidiGod` | MIDI GOD | MIDI pattern generator (instrument + MIDI out): 10 genres (full-on, prog psy, psy-tech, tech/deep/bass house, melodic/hard techno, trance, EDM) x 9 roles (bass, acid, lead, pluck, arp, chords, pad, counter, drums), key/scale/groove controls, drag the loop into the DAW as MIDI, audio to MIDI (melody, bass, drums, chords), 106 presets |
 
-`Common` holds the shared metal skin, knobs, preset bar and A/B code used by SUBICH, BAMBA, TAHINI, ZHUG and SALAT.
+`Common` holds the shared metal skin, knobs, preset bar and A/B code used by SUBICH, BAMBA, TAHINI, ZHUG, SALAT and MIDI GOD.
 
 Plugin IDs (manufacturer + plugin codes) are unchanged, so existing DAW projects keep loading them.
 

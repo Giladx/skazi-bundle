@@ -80,6 +80,81 @@ private:
         return data.data() + (((size_t) t * kFrames + (size_t) f) * kMips + (size_t) m) * stride;
     }
 
+public:
+    // Builds the band-limited mip levels of one frame from its harmonics (sin / cos per harmonic)
+    static void buildMips (const std::vector<float>& sinA, const std::vector<float>& cosA, float* frameBase)
+    {
+        juce::dsp::FFT fft (11);
+        std::vector<float> buf ((size_t) N * 2);
+        float scale = 1.f;
+        for (int m = 0; m < kMips; ++m)
+        {
+            std::fill (buf.begin(), buf.end(), 0.f);
+            const int maxH = kMaxHarm >> m;
+            for (int n = 1; n <= maxH && n < N / 2; ++n)
+            {
+                buf[(size_t) (2 * n)]           =  cosA[(size_t) n] * N * 0.5f;
+                buf[(size_t) (2 * n + 1)]       = -sinA[(size_t) n] * N * 0.5f;
+                buf[(size_t) (2 * (N - n))]     =  cosA[(size_t) n] * N * 0.5f;
+                buf[(size_t) (2 * (N - n) + 1)] =  sinA[(size_t) n] * N * 0.5f;
+            }
+            fft.performRealOnlyInverseTransform (buf.data());
+            if (m == 0)
+            {
+                float peak = 0.f;
+                for (int i = 0; i < N; ++i) peak = std::max (peak, std::abs (buf[(size_t) i]));
+                scale = peak > 1.0e-6f ? 1.f / peak : 1.f;
+            }
+            float* dst = frameBase + (size_t) m * stride;
+            for (int i = 0; i < N; ++i) dst[i] = buf[(size_t) i] * scale;
+            dst[N] = dst[0];
+        }
+    }
+
+    // A wavetable loaded from the user's WAV file: 16 frames of 2048 samples, same layout as the built-ins
+    class UserTable
+    {
+    public:
+        // frames: kFrames * N samples (one cycle each)
+        void build (const std::vector<float>& frames)
+        {
+            data.assign ((size_t) kFrames * kMips * stride, 0.f);
+            juce::dsp::FFT fft (11);
+            std::vector<float> buf ((size_t) N * 2);
+            std::vector<float> sinA (kMaxHarm + 1), cosA (kMaxHarm + 1);
+            for (int f = 0; f < kFrames; ++f)
+            {
+                std::fill (buf.begin(), buf.end(), 0.f);
+                for (int i = 0; i < N; ++i) buf[(size_t) i] = frames[(size_t) (f * N + i)];
+                fft.performRealOnlyForwardTransform (buf.data());
+                std::fill (sinA.begin(), sinA.end(), 0.f);
+                std::fill (cosA.begin(), cosA.end(), 0.f);
+                for (int n = 1; n <= kMaxHarm && n < N / 2; ++n)
+                {
+                    cosA[(size_t) n] = buf[(size_t) (2 * n)] * 2.f / N;
+                    sinA[(size_t) n] = -buf[(size_t) (2 * n + 1)] * 2.f / N;
+                }
+                buildMips (sinA, cosA, data.data() + (size_t) f * kMips * stride);
+            }
+        }
+
+        Reader reader (float pos, float maxDt) const
+        {
+            const float h = 0.5f / std::max (maxDt, 1.0e-7f);
+            int m = 0;
+            while (m < kMips - 1 && (float) (kMaxHarm >> m) > h) ++m;
+            const float fpos = std::clamp (pos, 0.f, 1.f) * (kFrames - 1);
+            const int f0 = (int) fpos;
+            return { table (f0, m), table (std::min (f0 + 1, kFrames - 1), m), fpos - (float) f0 };
+        }
+        const float* frame (float pos) const { return table ((int) std::round (std::clamp (pos, 0.f, 1.f) * (kFrames - 1)), 0); }
+
+    private:
+        const float* table (int f, int m) const { return data.data() + ((size_t) f * kMips + (size_t) m) * stride; }
+        std::vector<float> data;
+    };
+
+private:
     Wavetables()
     {
         data.assign ((size_t) kTables * kFrames * kMips * stride, 0.f);

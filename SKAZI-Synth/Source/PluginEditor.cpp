@@ -176,6 +176,25 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto r = getLocalBounds().toFloat();
+        if (Acid::skin == Acid::Bully)
+        {
+            // BULLY glass panel: dark violet glass, rainbow frame, neon dot + title
+            auto body = r.reduced (1.f);
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xe0140c2c), 0.f, body.getY(), juce::Colour (0xd40a0618), 0.f, body.getBottom(), false));
+            g.fillRoundedRectangle (body, 11.f);
+            g.setGradientFill (Acid::rainbow (body.getX(), body.getY(), body.getRight(), body.getBottom()));
+            g.drawRoundedRectangle (body.reduced (0.5f), 11.f, 1.4f);
+            g.setColour (juce::Colours::white.withAlpha (0.05f));
+            g.drawHorizontalLine ((int) body.getY() + 2, body.getX() + 10.f, body.getRight() - 10.f);
+            g.setColour (accent.withAlpha (0.4f));
+            g.fillEllipse (body.getX() + 9.f, 12.f, 13.f, 13.f);
+            g.setColour (accent);
+            g.fillEllipse (body.getX() + 12.f, 15.f, 7.f, 7.f);
+            g.setColour (Acid::text);
+            g.setFont (Acid::font (13.5f));
+            g.drawText (title.toUpperCase(), 30, 8, 420, 22, juce::Justification::centredLeft);
+            return;
+        }
         if (Acid::skin == Acid::Vintage)
         {
             // Black anodised front panel, engraved cream title, corner screws
@@ -294,10 +313,43 @@ public:
 };
 
 //==============================================================================
-class WaveDisplay : public juce::Component
+class WaveDisplay : public juce::Component, public juce::FileDragAndDropTarget, public juce::SettableTooltipClient
 {
 public:
-    WaveDisplay (AcidanceProcessor& p, int index, juce::Colour c) : proc (p), o (index), colour (Acid::accentFor (c)) {}
+    WaveDisplay (AcidanceProcessor& p, int index, juce::Colour c) : proc (p), o (index), colour (Acid::accentFor (c))
+    {
+        setTooltip ("Drop a WAV file here (or right-click) to load your own wavetable: it plays as USER");
+    }
+
+    // your own wavetables: drag a WAV / AIFF onto the display, or right-click to pick one
+    bool isInterestedInFileDrag (const juce::StringArray& files) override
+    {
+        return files.size() == 1 && juce::File (files[0]).hasFileExtension ("wav;aif;aiff;flac");
+    }
+    void fileDragEnter (const juce::StringArray&, int, int) override { dragOver = true; repaint(); }
+    void fileDragExit (const juce::StringArray&) override { dragOver = false; repaint(); }
+    void filesDropped (const juce::StringArray& files, int, int) override
+    {
+        dragOver = false;
+        load (juce::File (files[0]));
+    }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (! e.mods.isPopupMenu()) return;
+        juce::PopupMenu m;
+        m.addItem (1, "LOAD WAVETABLE (WAV)...");
+        juce::Component::SafePointer<WaveDisplay> safe (this);
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [safe] (int r)
+        {
+            if (safe == nullptr || r != 1) return;
+            safe->chooser = std::make_unique<juce::FileChooser> ("Load a wavetable", juce::File(), "*.wav;*.aif;*.aiff;*.flac");
+            safe->chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                        [safe] (const juce::FileChooser& fc)
+                                        {
+                                            if (safe != nullptr && fc.getResult().existsAsFile()) safe->load (fc.getResult());
+                                        });
+        });
+    }
 
     void paint (juce::Graphics& g) override
     {
@@ -318,7 +370,9 @@ public:
         }
         const int wave = (int) readParam (proc, pre + "wave");
         const float pos = readParam (proc, pre + "wtpos");
-        const float* table = wave >= 4 ? Wavetables::get().frame (wave - 4, pos) : nullptr;
+        const auto* user = wave >= 8 ? proc.userTable (o) : nullptr;
+        const float* table = wave >= 8 ? (user != nullptr ? user->frame (pos) : Wavetables::get().frame (0, pos))
+                           : wave >= 4 ? Wavetables::get().frame (wave - 4, pos) : nullptr;
 
         juce::Path path;
         const int n = (int) r.getWidth() - 8;
@@ -341,13 +395,40 @@ public:
         Acid::glowStroke (g, path, colour, 1.8f);
         g.setColour (Acid::screenDim);
         g.setFont (Acid::font (10.f));
-        g.drawText (Lists::oscWaves[wave].toUpperCase(), r.reduced (6.f, 4.f), juce::Justification::topLeft);
+        const auto label = wave >= 8 ? (user != nullptr ? "USER: " + proc.userWavetableName[o].toUpperCase() : juce::String ("USER: DROP A WAV HERE"))
+                                     : Lists::oscWaves[wave].toUpperCase();
+        g.drawText (label, r.reduced (6.f, 4.f), juce::Justification::topLeft);
+        if (dragOver)
+        {
+            g.setColour (colour.withAlpha (0.25f));
+            g.fillRoundedRectangle (r, 6.f);
+            g.setColour (colour);
+            g.drawRoundedRectangle (r.reduced (1.f), 6.f, 2.f);
+            g.setFont (Acid::font (13.f));
+            g.drawText ("DROP TO LOAD WAVETABLE", r, juce::Justification::centred);
+        }
+        if (message.isNotEmpty())
+        {
+            g.setColour (Acid::panicRed);
+            g.setFont (Acid::font (11.f));
+            g.drawText (message, r.reduced (6.f, 4.f), juce::Justification::bottomLeft);
+        }
     }
 
 private:
+    void load (const juce::File& f)
+    {
+        juce::String err;
+        message = proc.loadUserWavetable (o, f, &err) ? juce::String() : err;
+        repaint();
+    }
+
     AcidanceProcessor& proc;
     int o;
     juce::Colour colour;
+    bool dragOver = false;
+    juce::String message;
+    std::unique_ptr<juce::FileChooser> chooser;
 };
 
 //==============================================================================
@@ -502,7 +583,14 @@ public:
             u.lock = panel->toggle (pre + "lock", "PHASE LOCK");
             u.lock->setTooltip ("Restart the oscillator at exactly 0 degrees on every note");
             u.warp = panel->choice (pre + "warp", { "NO WARP", "FM", "AM", "RING" });
-            live.add (u.wave); live.add (u.display); live.add (u.warp);
+            u.shape = panel->choice (pre + "shape", { "OFF", "FOLD", "PWM", "ASYM" });
+            u.shape->setTooltip ("Shapes the wave: FOLD folds it back on itself, PWM squeezes the cycle, ASYM adds even harmonics");
+            u.shapeAmt = panel->knob (pre + "shapeamt", "SHAPE");
+            u.wtStep = panel->toggle (pre + "wtstep", "WT STEP");
+            u.wtStep->setTooltip ("Wavetable position jumps from frame to frame instead of morphing: 8-bit / chip sounds");
+            u.uniMode = panel->choice (pre + "unimode", { "UNI", "PWR", "MIN", "MAJ" });
+            u.uniMode->setTooltip ("Unison mode: classic detune, or the unison voices stacked as a power, minor or major chord");
+            live.add (u.wave); live.add (u.display); live.add (u.warp); live.add (u.shape); live.add (u.uniMode);
         }
 
         sub = add (new Panel ("SUB", Acid::orange, s));
@@ -539,6 +627,10 @@ public:
             u.rand->setBounds (14, 298, 112, 30);
             u.lock->setBounds (130, 298, 112, 30);
             u.warp->setBounds (250, 298, w - 264, 30);
+            u.shape->setBounds (356, 166, w - 370, 28);
+            u.shapeAmt->setBounds (356, 198, 64, 84);
+            u.wtStep->setBounds (426, 204, w - 440, 30);
+            u.uniMode->setBounds (426, 244, w - 440, 30);
         }
         const int y = 376, h = getHeight() - y;
         sub->setBounds (0, y, 300, h);
@@ -561,7 +653,9 @@ private:
     {
         Panel* panel = nullptr;
         juce::TextButton* on = nullptr, *rand = nullptr, *lock = nullptr;
-        ChoiceButtons* wave = nullptr, *warp = nullptr;
+        ChoiceButtons* wave = nullptr, *warp = nullptr, *shape = nullptr, *uniMode = nullptr;
+        Knob* shapeAmt = nullptr;
+        juce::TextButton* wtStep = nullptr;
         WaveDisplay* display = nullptr;
         std::array<Knob*, 5> knobs1 {}, knobs2 {};
     } ui[2];
@@ -596,6 +690,7 @@ public:
         routing = add (new Panel ("ROUTING", Acid::violet, s));
         routingChoice = routing->choice ("flt_routing", { "SERIAL", "PARALLEL", "SPLIT" });
         warmth = routing->knob ("warmth", "ANALOG WARMTH");
+        drift = routing->knob ("drift", "ANALOG DRIFT");
         live.add (routingChoice);
 
         envPanel = add (new Panel ("FILTER ENVELOPE (ENV 2)", Acid::orange, s));
@@ -618,7 +713,8 @@ public:
         }
         routing->setBounds (0, 316, w, getHeight() - 316);
         routingChoice->setBounds (14, 44, w - 28, 36);
-        warmth->setBounds (w - 124, 100, 110, 120);
+        warmth->setBounds (w - 124, 92, 110, 120);
+        drift->setBounds (w - 124, 220, 110, 120);
         envPanel->setBounds (w + 16, 316, w, getHeight() - 316);
         envDisplay->setBounds (14, 42, w - 28, 120);
         Panel::row ({ envKnobs[0], envKnobs[1], envKnobs[2], envKnobs[3] }, 40, 172, 90, 100, 40);
@@ -635,7 +731,7 @@ public:
             "OSC 1 + SUB  ->  FILTER 1          OSC 2 + NOISE  ->  FILTER 2" };
         g.setColour (Acid::dim);
         g.setFont (Acid::font (13.f, false));
-        g.drawFittedText (juce::String (text[mode]) + "\n\nSet a filter to OFF to bypass it. ENV 2 AMT sets how far the filter envelope moves each cutoff.\n\nANALOG WARMTH adds gentle saturation before and after the filters.",
+        g.drawFittedText (juce::String (text[mode]) + "\n\nSet a filter to OFF to bypass it. ENV 2 AMT sets how far the filter envelope moves each cutoff.\n\nANALOG WARMTH adds gentle saturation before and after the filters. ANALOG DRIFT lets every voice wander slightly in pitch and cutoff, like an analog poly.",
                           r, juce::Justification::topLeft, 6);
     }
 
@@ -645,7 +741,7 @@ private:
     struct FilterUi { Panel* panel = nullptr; ChoiceButtons* type = nullptr; std::array<Knob*, 5> knobs {}; } ui[2];
     Panel* routing, *envPanel;
     ChoiceButtons* routingChoice;
-    Knob* warmth;
+    Knob* warmth, *drift;
     EnvDisplay* envDisplay;
     std::array<Knob*, 4> envKnobs {};
     juce::OwnedArray<juce::Component> owned;
@@ -831,17 +927,26 @@ private:
 class FxPage : public Page
 {
 public:
+    // The rack in signal order: DIST -> FX FILTER -> MOD FX -> DELAY -> REVERB -> COMP -> WIDTH -> EQ
     explicit FxPage (AcidanceProcessor& p)
     {
         auto& s = p.apvts;
         dist = add (new Panel ("DISTORTION", Acid::orange, s));
         distOn = dist->toggle ("dist_on", "ON");
-        distType = dist->choice ("dist_type", { "TUBE", "SOFT", "HARD", "CRUSH" });
-        distKnobs = { dist->knob ("dist_drive", "DRIVE"), dist->knob ("dist_mix", "MIX") };
+        distType = dist->choice ("dist_type", Lists::distTypesShort, 2);
+        distType->setTooltip ("TUBE / SOFT / HARD / CRUSH, FUZZ (asymmetric), FOLD (wavefolder), RECT (adds the octave), "
+                              "DIODE, SCREAM (mid-push hard clip), DESTROY (fold + clip + crush, the hardest)");
+        distKnobs = { dist->knob ("dist_drive", "DRIVE"), dist->knob ("dist_tone", "TONE"), dist->knob ("dist_mix", "MIX") };
 
-        mfx = add (new Panel ("CHORUS / PHASER / FLANGER / RING", Acid::cyan, s));
+        fxf = add (new Panel ("FX FILTER", Acid::orange, s));
+        fxfOn = fxf->toggle ("fxf_on", "ON");
+        fxfType = fxf->choice ("fxf_type", { "LP", "HP", "BP", "NOTCH", "ACID" });
+        fxfKnobs = { fxf->knob ("fxf_cut", "CUTOFF"), fxf->knob ("fxf_res", "RESO"),
+                     fxf->knob ("fxf_drive", "DRIVE"), fxf->knob ("fxf_mix", "MIX") };
+
+        mfx = add (new Panel ("MOD FX", Acid::cyan, s));
         mfxOn = mfx->toggle ("mfx_on", "ON");
-        mfxType = mfx->choice ("mfx_type", { "CHORUS", "PHASER", "FLANGER", "RING" });
+        mfxType = mfx->choice ("mfx_type", { "CHORUS", "PHASER", "FLANGER", "RING", "TREMOLO", "PAN" }, 2);
         mfxKnobs = { mfx->knob ("mfx_rate", "RATE"), mfx->knob ("mfx_depth", "DEPTH"),
                      mfx->knob ("mfx_fb", "FEEDBACK"), mfx->knob ("mfx_mix", "MIX") };
 
@@ -863,49 +968,75 @@ public:
         compKnobs = { comp->knob ("comp_thr", "THRESH"), comp->knob ("comp_ratio", "RATIO"), comp->knob ("comp_att", "ATTACK"),
                       comp->knob ("comp_rel", "RELEASE"), comp->knob ("comp_makeup", "MAKEUP"), comp->knob ("comp_depth", "OTT DEPTH") };
 
+        wid = add (new Panel ("WIDTH", Acid::magenta, s));
+        widOn = wid->toggle ("wid_on", "ON");
+        widKnobs = { wid->knob ("wid_amt", "WIDTH"), wid->knob ("wid_mono", "BASS MONO") };
+
         eq = add (new Panel ("MASTER EQ", Acid::yellow, s));
         eqOn = eq->toggle ("eq_on", "ON");
         eqKnobs = { eq->knob ("eq_lf", "LOW FREQ"), eq->knob ("eq_lg", "LOW GAIN", true), eq->knob ("eq_mf", "MID FREQ"),
                     eq->knob ("eq_mq", "MID Q"), eq->knob ("eq_mg", "MID GAIN", true), eq->knob ("eq_hf", "HIGH FREQ"),
                     eq->knob ("eq_hg", "HIGH GAIN", true) };
-        live.add (distType); live.add (mfxType); live.add (compMode);
+        live.add (distType); live.add (fxfType); live.add (mfxType); live.add (compMode);
     }
 
     void resized() override
     {
-        const int w = (getWidth() - 32) / 3, h = (getHeight() - 16) / 2;
-        Panel* panels[] = { dist, mfx, dly, rev, comp, eq };
-        juce::TextButton* ons[] = { distOn, mfxOn, dlyOn, revOn, compOn, eqOn };
-        for (int i = 0; i < 6; ++i)
+        const int w = (getWidth() - 48) / 4, h = (getHeight() - 16) / 2;
+        Panel* panels[] = { dist, fxf, mfx, dly, rev, comp, wid, eq };
+        juce::TextButton* ons[] = { distOn, fxfOn, mfxOn, dlyOn, revOn, compOn, widOn, eqOn };
+        for (int i = 0; i < 8; ++i)
         {
-            panels[i]->setBounds ((i % 3) * (w + 16), (i / 3) * (h + 16), w, h);
+            panels[i]->setBounds ((i % 4) * (w + 16), (i / 4) * (h + 16), w, h);
             ons[i]->setBounds (w - 64, 8, 52, 26);
         }
-        distType->setBounds (14, 46, w - 28, 30);
-        Panel::row ({ distKnobs[0], distKnobs[1] }, 60, 110, 96, 110, 60);
-        mfxType->setBounds (14, 46, w - 28, 30);
-        Panel::row ({ mfxKnobs[0], mfxKnobs[1], mfxKnobs[2], mfxKnobs[3] }, 14, 110, 84, 100, 6);
+        // knobs centred in rows of `cols`
+        auto grid = [w] (std::initializer_list<juce::Component*> items, int cols, int y, int kw, int kh, int gapY = 6)
+        {
+            const int gap = 6, x0 = (w - (cols * kw + (cols - 1) * gap)) / 2;
+            int i = 0;
+            for (auto* c : items)
+            {
+                c->setBounds (x0 + (i % cols) * (kw + gap), y + (i / cols) * (kh + gapY), kw, kh);
+                ++i;
+            }
+        };
+        distType->setBounds (14, 46, w - 28, 64);
+        grid ({ distKnobs[0], distKnobs[1], distKnobs[2] }, 3, 136, 80, 110);
+        fxfType->setBounds (14, 46, w - 28, 30);
+        grid ({ fxfKnobs[0], fxfKnobs[1], fxfKnobs[2], fxfKnobs[3] }, 2, 92, 90, 110, 12);
+        mfxType->setBounds (14, 46, w - 28, 60);
+        grid ({ mfxKnobs[0], mfxKnobs[1], mfxKnobs[2], mfxKnobs[3] }, 2, 116, 90, 104, 8);
         dlySync->setBounds (14, 46, 70, 30);
-        dlyDiv->setBounds (90, 46, 110, 30);
-        dlyPP->setBounds (208, 46, w - 222, 30);
-        Panel::row ({ dlyKnobs[0], dlyKnobs[1], dlyKnobs[2] }, 30, 110, 96, 110, 18);
-        Panel::row ({ revKnobs[0], revKnobs[1], revKnobs[2], revKnobs[3] }, 14, 70, 84, 110, 6);
+        dlyDiv->setBounds (90, 46, w - 104, 30);
+        dlyPP->setBounds (14, 84, w - 28, 28);
+        grid ({ dlyKnobs[0], dlyKnobs[1], dlyKnobs[2] }, 3, 136, 80, 110);
+        grid ({ revKnobs[0], revKnobs[1], revKnobs[2], revKnobs[3] }, 2, 48, 90, 130, 14);
         compMode->setBounds (14, 46, w - 28, 28);
-        Panel::row ({ compKnobs[0], compKnobs[1], compKnobs[2] }, 40, 80, 84, 96, 30);
-        Panel::row ({ compKnobs[3], compKnobs[4], compKnobs[5] }, 40, 180, 84, 96, 30);
-        Panel::row ({ eqKnobs[0], eqKnobs[1], eqKnobs[2], eqKnobs[3] }, 14, 46, 84, 100, 6);
-        Panel::row ({ eqKnobs[4], eqKnobs[5], eqKnobs[6] }, 14, 160, 84, 100, 6);
+        grid ({ compKnobs[0], compKnobs[1], compKnobs[2], compKnobs[3], compKnobs[4], compKnobs[5] }, 3, 88, 80, 110, 14);
+        grid ({ widKnobs[0], widKnobs[1] }, 2, 70, 100, 130);
+        grid ({ eqKnobs[0], eqKnobs[1], eqKnobs[2], eqKnobs[3] }, 4, 50, 60, 110, 14);
+        grid ({ eqKnobs[4], eqKnobs[5], eqKnobs[6] }, 3, 174, 60, 110);
+    }
+
+    void paintOverChildren (juce::Graphics& g) override
+    {
+        // WIDTH caption under its knobs
+        g.setColour (Acid::dim);
+        g.setFont (Acid::font (10.5f, false));
+        g.drawFittedText ("Sides below BASS MONO are folded to mono for a tight low end. WIDTH above 1 spreads the highs.",
+                          wid->getBounds().reduced (18, 0).withTrimmedTop (230).withHeight (60), juce::Justification::centredTop, 3);
     }
 
 private:
     template <class T> T* add (T* c) { owned.add (c); addAndMakeVisible (c); return c; }
-    Panel* dist, *mfx, *dly, *rev, *comp, *eq;
-    juce::TextButton* distOn, *mfxOn, *dlyOn, *revOn, *compOn, *eqOn, *dlySync, *dlyPP;
-    ChoiceButtons* distType, *mfxType, *compMode;
+    Panel* dist, *fxf, *mfx, *dly, *rev, *comp, *wid, *eq;
+    juce::TextButton* distOn, *fxfOn, *mfxOn, *dlyOn, *revOn, *compOn, *widOn, *eqOn, *dlySync, *dlyPP;
+    ChoiceButtons* distType, *fxfType, *mfxType, *compMode;
     juce::ComboBox* dlyDiv;
-    std::array<Knob*, 2> distKnobs {};
-    std::array<Knob*, 4> mfxKnobs {}, revKnobs {};
-    std::array<Knob*, 3> dlyKnobs {};
+    std::array<Knob*, 3> distKnobs {}, dlyKnobs {};
+    std::array<Knob*, 4> fxfKnobs {}, mfxKnobs {}, revKnobs {};
+    std::array<Knob*, 2> widKnobs {};
     std::array<Knob*, 6> compKnobs {};
     std::array<Knob*, 7> eqKnobs {};
     juce::OwnedArray<juce::Component> owned;
@@ -1017,6 +1148,80 @@ private:
     ChoiceButtons& selector;
 };
 
+//==============================================================================
+// Step-lock lane under the step grid: pick a lane, drag the bars up / down, double-click to clear
+class LockLane : public juce::Component
+{
+public:
+    LockLane (AcidanceProcessor& p, ChoiceButtons& sel) : proc (p), selector (sel) {}
+
+    static constexpr int labelW = 64;
+    int lane = 0;
+
+    void paint (juce::Graphics& g) override
+    {
+        static const char* const names[] = { "CUTOFF", "RESO", "DECAY", "DRIVE" };
+        const juce::Colour cols[] = { Acid::cyan, Acid::magenta, Acid::yellow, Acid::orange };
+        const float lh = getHeight() / 4.f;
+        for (int i = 0; i < kNumLocks; ++i)
+        {
+            auto r = juce::Rectangle<float> (0.f, i * lh, (float) labelW - 6.f, lh).reduced (1.f);
+            if (i == lane) Acid::glowRect (g, r, cols[i], 3.f);
+            else { g.setColour (Acid::panel2); g.fillRoundedRectangle (r, 3.f); }
+            g.setColour (i == lane ? juce::Colour (0xff101014) : Acid::dim);
+            g.setFont (Acid::font (10.f));
+            g.drawText (names[i], r, juce::Justification::centred);
+        }
+        auto& steps = proc.seq.steps[selector.getIndex()];
+        const float cw = (getWidth() - labelW) / (float) kNumSteps, mid = getHeight() * 0.5f;
+        g.setColour (Acid::line);
+        g.drawHorizontalLine ((int) mid, (float) labelW, (float) getWidth());
+        for (int c = 0; c < kNumSteps; ++c)
+        {
+            const auto cell = juce::Rectangle<float> (labelW + c * cw, 0.f, cw, (float) getHeight()).reduced (2.f, 2.f);
+            g.setColour (Acid::bg.brighter (0.04f));
+            g.fillRect (cell);
+            const int v = steps[c].lock[lane].load();
+            if (v != 0)
+            {
+                const float hgt = (getHeight() * 0.5f - 3.f) * std::abs (v) / 100.f;
+                auto bar = juce::Rectangle<float> (cell.getX() + 3.f, v > 0 ? mid - hgt : mid, cell.getWidth() - 6.f, hgt);
+                Acid::glowRect (g, bar, cols[lane], 2.f);
+            }
+            if (proc.currentStep.load() == c)
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.08f));
+                g.fillRect (cell);
+            }
+        }
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.x < labelW) { lane = juce::jlimit (0, kNumLocks - 1, (int) (e.y / (getHeight() / 4.f))); repaint(); return; }
+        mouseDrag (e);
+    }
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (e.getMouseDownX() < labelW) return;
+        const int c = juce::jlimit (0, kNumSteps - 1, (int) ((e.x - labelW) / ((getWidth() - labelW) / (float) kNumSteps)));
+        const int v = juce::jlimit (-100, 100, (int) std::round ((getHeight() * 0.5f - e.y) / (getHeight() * 0.5f - 3.f) * 100.f));
+        proc.seq.steps[selector.getIndex()][c].lock[lane] = (int8_t) (std::abs (v) < 6 ? 0 : v);
+        repaint();
+    }
+    void mouseDoubleClick (const juce::MouseEvent& e) override
+    {
+        if (e.x < labelW) return;
+        const int c = juce::jlimit (0, kNumSteps - 1, (int) ((e.x - labelW) / ((getWidth() - labelW) / (float) kNumSteps)));
+        proc.seq.steps[selector.getIndex()][c].lock[lane] = 0;
+        repaint();
+    }
+
+private:
+    AcidanceProcessor& proc;
+    ChoiceButtons& selector;
+};
+
 class SeqPage : public Page
 {
 public:
@@ -1036,19 +1241,36 @@ public:
         arp->onClick = [this] { proc.seq.randomiseArp (pattern->getIndex(), (uint32_t) juce::Random::getSystemRandom().nextInt()); };
         clear->onClick = [this] { proc.seq.clear (pattern->getIndex()); };
         grid = panel->add (new SeqGrid (p, *pattern));
-        live.add (pattern); live.add (grid);
+        lane = panel->add (new LockLane (p, *pattern));
+        live.add (pattern); live.add (grid); live.add (lane);
+
+        arpPanel = std::make_unique<Panel> ("ARPEGGIATOR", Acid::cyan, p.apvts);
+        addAndMakeVisible (*arpPanel);
+        arpOn = arpPanel->toggle ("arp_on", "ARP ON");
+        arpMode = arpPanel->choice ("arp_mode", Lists::arpModesShort);
+        arpDiv = arpPanel->combo ("arp_div", Lists::divisions);
+        arpKnobs = { arpPanel->knob ("arp_oct", "OCTAVES"), arpPanel->knob ("arp_gate", "GATE"), arpPanel->knob ("arp_swing", "SWING") };
+        live.add (arpMode);
     }
 
     void resized() override
     {
-        panel->setBounds (getLocalBounds());
+        const int arpH = 132;
+        panel->setBounds (getLocalBounds().withTrimmedBottom (arpH + 14));
+        arpPanel->setBounds (0, getHeight() - arpH, getWidth(), arpH);
+        arpOn->setBounds (20, 50, 100, 34);
+        arpMode->setBounds (136, 48, 470, 38);
+        arpDiv->setBounds (622, 52, 110, 30);
+        Panel::row ({ arpKnobs[0], arpKnobs[1], arpKnobs[2] }, 760, 34, 80, 92, 10);
         onButton->setBounds (20, 52, 100, 34);
         pattern->setBounds (136, 52, 330, 34);
         Panel::row ({ knobs[0], knobs[1], knobs[2] }, 490, 36, 74, 80, 6);
         random->setBounds (740, 52, 130, 34);
         arp->setBounds (876, 52, 130, 34);
         clear->setBounds (1012, 52, 130, 34);
-        grid->setBounds (20, 128, getWidth() - 40, getHeight() - 144);
+        const int laneH = 92;
+        grid->setBounds (20, 128, getWidth() - 40, panel->getHeight() - 144 - laneH - 8);
+        lane->setBounds (20, panel->getHeight() - 16 - laneH, getWidth() - 40, laneH);
     }
 
     void paintOverChildren (juce::Graphics& g) override
@@ -1057,15 +1279,21 @@ public:
         g.setFont (Acid::font (11.f, false));
         g.drawText ("Plays only while MIDI notes come in (DAW clip or keyboard), in time with the song or RUN. C3 = no transpose.",
                     200, 10, getWidth() - 220, 22, juce::Justification::centredRight);
+        g.drawText ("Hold a chord: the ARP plays it on the song grid (or from the first key when stopped). SEQ ON takes the keys first.",
+                    200, arpPanel->getY() + 10, getWidth() - 220, 22, juce::Justification::centredRight);
     }
 
 private:
     AcidanceProcessor& proc;
-    std::unique_ptr<Panel> panel;
-    juce::TextButton* onButton, *random, *arp, *clear;
+    std::unique_ptr<Panel> panel, arpPanel;
+    juce::TextButton* onButton, *random, *arp, *clear, *arpOn;
+    ChoiceButtons* arpMode;
+    juce::ComboBox* arpDiv;
+    std::array<Knob*, 3> arpKnobs {};
     ChoiceButtons* pattern;
     std::array<Knob*, 3> knobs {};
     SeqGrid* grid;
+    LockLane* lane;
 };
 
 //==============================================================================
@@ -1118,6 +1346,157 @@ private:
 };
 
 //==============================================================================
+// What a macro is routed to in the matrix, shown under its knob
+class MacroInfo : public juce::Component
+{
+public:
+    MacroInfo (AcidanceProcessor& p, int m) : proc (p), macro (m) {}
+    void paint (juce::Graphics& g) override
+    {
+        juce::StringArray to;
+        for (int k = 1; k <= kNumModSlots; ++k)
+        {
+            const juce::String id = "mod" + juce::String (k) + "_";
+            if ((int) proc.apvts.getRawParameterValue (id + "src")->load() == S_Macro1 + macro
+                && std::abs (proc.apvts.getRawParameterValue (id + "amt")->load()) > 0.001f)
+                to.addIfNotAlreadyThere (Lists::modDests[(int) proc.apvts.getRawParameterValue (id + "dst")->load()].toUpperCase());
+        }
+        g.setColour (to.isEmpty() ? Acid::dim.withAlpha (0.6f) : Acid::text);
+        g.setFont (Acid::font (10.5f, false));
+        g.drawFittedText (to.isEmpty() ? juce::String ("NOT ROUTED (use MATRIX: source MACRO " + juce::String (macro + 1) + ")")
+                                       : "-> " + to.joinIntoString (", "),
+                          getLocalBounds(), juce::Justification::centredTop, 3);
+    }
+private:
+    AcidanceProcessor& proc;
+    int macro;
+};
+
+// Kick duck shape preview
+class DuckView : public juce::Component
+{
+public:
+    explicit DuckView (AcidanceProcessor& p) : proc (p) {}
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds().toFloat();
+        g.setColour (Acid::screen);
+        g.fillRoundedRectangle (r, 5.f);
+        const float depth = proc.apvts.getRawParameterValue ("duck_depth")->load();
+        const float rel = std::max (0.05f, proc.apvts.getRawParameterValue ("duck_rel")->load());
+        const float power = 1.f + proc.apvts.getRawParameterValue ("duck_curve")->load() * 3.f;
+        const bool on = proc.apvts.getRawParameterValue ("duck_on")->load() > 0.5f;
+        juce::Path p;
+        for (int x = 0; x <= (int) r.getWidth(); ++x)
+        {
+            float ph = (float) x / r.getWidth() * 2.f;   // two beats
+            ph -= std::floor (ph);
+            const float t = ph / rel;
+            const float gn = 1.f - depth * (t >= 1.f ? 0.f : std::pow (1.f - t, power));
+            const float y = r.getBottom() - 6.f - gn * (r.getHeight() - 12.f);
+            if (x == 0) p.startNewSubPath (r.getX() + (float) x, y); else p.lineTo (r.getX() + (float) x, y);
+        }
+        Acid::glowStroke (g, p, on ? Acid::magenta : Acid::dim, 2.f);
+    }
+private:
+    AcidanceProcessor& proc;
+};
+
+class PerformPage : public Page
+{
+public:
+    explicit PerformPage (AcidanceProcessor& p) : proc (p)
+    {
+        auto& s = p.apvts;
+        macros = add (new Panel ("MACROS", Acid::yellow, s));
+        for (int m = 0; m < kNumMacros; ++m)
+        {
+            macroKnobs[(size_t) m] = macros->knob ("macro" + juce::String (m + 1), "MACRO " + juce::String (m + 1));
+            macroInfo[(size_t) m] = macros->add (new MacroInfo (p, m));
+            live.add (macroInfo[(size_t) m]);
+        }
+
+        morph = add (new Panel ("A / B MORPH", Acid::cyan, s));
+        morphOn = morph->toggle ("morph_on", "MORPH ON");
+        storeA = morph->add (new juce::TextButton ("STORE A"));
+        storeB = morph->add (new juce::TextButton ("STORE B"));
+        for (auto* b : { storeA, storeB }) b->setColour (juce::TextButton::buttonOnColourId, Acid::cyan);
+        storeA->onClick = [this] { proc.storeMorph (0); repaint(); };
+        storeB->onClick = [this] { proc.storeMorph (1); repaint(); };
+        morphKnob = morph->knob ("morph", "MORPH  A <-> B");
+
+        duck = add (new Panel ("KICK DUCK", Acid::magenta, s));
+        duckOn = duck->toggle ("duck_on", "ON");
+        duckDiv = duck->combo ("duck_div", Lists::divisions);
+        duckKnobs = { duck->knob ("duck_depth", "DEPTH"), duck->knob ("duck_rel", "RELEASE"), duck->knob ("duck_curve", "CURVE") };
+        duckView = duck->add (new DuckView (p));
+        live.add (duckView);
+
+        analog = add (new Panel ("ANALOG VOICE CARDS", Acid::green, s));
+        analogKnobs = { analog->knob ("spread", "VOICE SPREAD"), analog->knob ("drift", "ANALOG DRIFT"), analog->knob ("warmth", "WARMTH") };
+        live.add (this);
+    }
+
+    void resized() override
+    {
+        const int w = (getWidth() - 16) / 2, h = (getHeight() - 16) / 2;
+        macros->setBounds (0, 0, w, h);
+        morph->setBounds (w + 16, 0, w, h);
+        duck->setBounds (0, h + 16, w, h);
+        analog->setBounds (w + 16, h + 16, w, h);
+        const int kw = (w - 40) / 4;
+        for (int m = 0; m < kNumMacros; ++m)
+        {
+            macroKnobs[(size_t) m]->setBounds (20 + m * kw, 56, kw, 150);
+            macroInfo[(size_t) m]->setBounds (20 + m * kw + 4, 212, kw - 8, 90);
+        }
+        morphOn->setBounds (20, 56, 130, 34);
+        storeA->setBounds (20, 110, 130, 40);
+        storeB->setBounds (20, 160, 130, 40);
+        morphKnob->setBounds (200, 50, 200, 230);
+        duckOn->setBounds (w - 64, 8, 52, 26);
+        duckDiv->setBounds (20, 50, 120, 30);
+        Panel::row ({ duckKnobs[0], duckKnobs[1], duckKnobs[2] }, 20, 96, 96, 120, 8);
+        duckView->setBounds (330, 56, w - 350, h - 76);
+        Panel::row ({ analogKnobs[0], analogKnobs[1], analogKnobs[2] }, 40, 70, 130, 160, 30);
+    }
+
+    void paintOverChildren (juce::Graphics& g) override
+    {
+        g.setFont (Acid::font (11.f, false));
+        auto mb = morph->getBounds();
+        g.setColour (proc.hasMorph (0) ? Acid::cyan : Acid::dim);
+        g.drawText (proc.hasMorph (0) ? "A stored" : "A empty", mb.getX() + 20, mb.getY() + 204, 130, 16, juce::Justification::centred);
+        g.setColour (proc.hasMorph (1) ? Acid::cyan : Acid::dim);
+        g.drawText (proc.hasMorph (1) ? "B stored" : "B empty", mb.getX() + 20, mb.getY() + 220, 130, 16, juce::Justification::centred);
+        g.setColour (Acid::dim);
+        g.drawFittedText ("STORE A, change the sound, STORE B, then MORPH ON. The MORPH knob blends every sound setting "
+                          "between the two (automate it for builds and drops). Your knobs keep their own values.",
+                          mb.getX() + 420, mb.getY() + 60, mb.getWidth() - 440, 160, juce::Justification::topLeft, 8);
+        auto db = duck->getBounds();
+        g.drawFittedText ("A sidechain dip on every beat of the RATE, locked to the song. Leaves room for the kick.",
+                          db.getX() + 20, db.getBottom() - 54, 300, 40, juce::Justification::topLeft, 3);
+        auto ab = analog->getBounds();
+        g.drawFittedText ("VOICE SPREAD gives each of the 16 voices its own small differences in cutoff, envelope speed, "
+                          "tuning and pan, like the voice cards of an analog poly. DRIFT lets every note wander slightly.",
+                          ab.getX() + 40, ab.getY() + 250, ab.getWidth() - 80, 80, juce::Justification::topLeft, 4);
+    }
+
+private:
+    template <class T> T* add (T* c) { owned.add (c); addAndMakeVisible (c); return c; }
+    AcidanceProcessor& proc;
+    Panel* macros, *morph, *duck, *analog;
+    std::array<Knob*, kNumMacros> macroKnobs {};
+    std::array<MacroInfo*, kNumMacros> macroInfo {};
+    juce::TextButton* morphOn, *storeA, *storeB, *duckOn;
+    Knob* morphKnob;
+    juce::ComboBox* duckDiv;
+    std::array<Knob*, 3> duckKnobs {}, analogKnobs {};
+    DuckView* duckView;
+    juce::OwnedArray<juce::Component> owned;
+};
+
+//==============================================================================
 class PresetBar : public juce::Component, private juce::Timer
 {
 public:
@@ -1130,7 +1509,7 @@ public:
         }
         prev.onClick = [this] { step (-1); };
         next.onClick = [this] { step (1); };
-        rnd.setTooltip ("Random sound with random effects");
+        rnd.setTooltip ("New random sound on every press: oscillators, filters, envelopes, LFOs, effects and arp, level-matched");
         rnd.onClick = [this] { proc.randomizeSound(); repaint(); };
         addAndMakeVisible (rnd);
         startTimerHz (10);
@@ -1844,6 +2223,11 @@ public:
     void paint (juce::Graphics& g) override
     {
         const int skin = Acid::skin;
+        if (skin == Acid::Bully)
+        {
+            paintBully (g);
+            return;
+        }
         if (skin == Acid::Hyper)
         {
             paintHyper (g);
@@ -1952,6 +2336,71 @@ public:
 
         g.setColour (Acid::dim);
         g.setFont (Acid::font (10.f).withExtraKerningFactor (0.2f));
+        g.drawText ("PRESET", 360, 14, 400, 14, juce::Justification::centred);
+    }
+
+    // BULLY look: a blurred rainbow swirl under a dark veil with star dust, glass header, rainbow rule
+    void paintBully (juce::Graphics& g)
+    {
+        if (backdrop.getWidth() != getWidth() || backdrop.getHeight() != getHeight())
+        {
+            const int sw = 96, sh = 72;
+            juce::Image small (juce::Image::RGB, sw, sh, false);
+            for (int y = 0; y < sh; ++y)
+                for (int x = 0; x < sw; ++x)
+                {
+                    const float dx = (x - sw * 0.5f) / sw, dy = (y - sh * 0.45f) / sh;
+                    const float a = std::atan2 (dy, dx) / juce::MathConstants<float>::twoPi + 0.5f;
+                    const float swirl = std::fmod (a + std::sqrt (dx * dx + dy * dy) * 0.9f + 1.f, 1.f);
+                    small.setPixelAt (x, y, juce::Colour::fromHSV (std::fmod (0.83f + swirl, 1.f), 0.95f, 1.f, 1.f));
+                }
+            backdrop = juce::Image (juce::Image::RGB, getWidth(), getHeight(), false);
+            juce::Graphics bg (backdrop);
+            bg.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+            bg.drawImage (small, 0, 0, getWidth(), getHeight(), 0, 0, sw, sh);
+            bg.setColour (juce::Colour (0xff07040f).withAlpha (0.76f));
+            bg.fillAll();
+            juce::Random rnd (7);
+            for (int i = 0; i < 320; ++i)
+            {
+                bg.setColour (juce::Colours::white.withAlpha (0.05f + rnd.nextFloat() * 0.18f));
+                const float sz = 0.6f + rnd.nextFloat() * 1.4f;
+                bg.fillEllipse (rnd.nextFloat() * getWidth(), rnd.nextFloat() * getHeight(), sz, sz);
+            }
+            bg.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.08f), 0.f, 0.f, juce::Colours::white.withAlpha (0.02f), 0.f, 100.f, false));
+            bg.fillRect (0, 0, getWidth(), 100);
+            bg.setGradientFill (Acid::rainbow (0.f, 0.f, (float) getWidth(), 0.f));
+            bg.fillRect (0, 100, getWidth(), 2);
+        }
+        g.drawImageAt (backdrop, 0, 0);
+
+        // logo in a rainbow frame, then the rainbow SKAZI wordmark and byline
+        g.setColour (juce::Colours::black);
+        g.fillRoundedRectangle (16.f, 10.f, 112.f, 62.f, 7.f);
+        g.setGradientFill (Acid::rainbow (16.f, 10.f, 128.f, 72.f));
+        g.drawRoundedRectangle (16.5f, 10.5f, 111.f, 61.f, 7.f, 1.2f);
+        if (! drawBrandLogo (g, { 22.f, 13.f, 100.f, 56.f }))
+        {
+            g.setColour (juce::Colours::white);
+            g.setFont (Acid::font (30.f));
+            g.drawText ("SKAZI", 16, 10, 112, 62, juce::Justification::centred);
+        }
+        juce::GlyphArrangement ga;
+        ga.addLineOfText (juce::Font (juce::FontOptions ("Impact", 44.f, juce::Font::plain)).withExtraKerningFactor (0.08f), "SKAZI", 140.f, 52.f);
+        juce::Path word;
+        ga.createPath (word);
+        juce::DropShadow (juce::Colour (0xffff00c8).withAlpha (0.7f), 12, {}).drawForPath (g, word);
+        g.setGradientFill (Acid::rainbow (140.f, 0.f, 140.f + word.getBounds().getWidth(), 0.f));
+        g.fillPath (word);
+        juce::GlyphArrangement by;
+        by.addLineOfText (Acid::font (12.5f).withExtraKerningFactor (0.2f), "BY ASHER SWISSA", 141.f, 72.f);
+        juce::Path byP;
+        by.createPath (byP);
+        g.setGradientFill (Acid::rainbow (141.f, 0.f, 141.f + byP.getBounds().getWidth(), 0.f));
+        g.fillPath (byP);
+        g.setColour (Acid::dim);
+        g.setFont (Acid::font (9.f).withExtraKerningFactor (0.2f));
+        g.drawText ("PSY / ACID / VA SYNTH", 141, 78, 190, 14, juce::Justification::centredLeft);
         g.drawText ("PRESET", 360, 14, 400, 14, juce::Justification::centred);
     }
 
@@ -2115,8 +2564,8 @@ public:
         // Left module rail
         for (int i = 0; i < tabs.size(); ++i)
             tabs[i]->setBounds (railX + 10, 140 + i * 66, railW - 20, 58);
-        browseButton.setBounds (railX + 10, 140 + 7 * 66 + 16, railW - 20, 44);
-        const int wheelY = 140 + 7 * 66 + 16 + 44 + 18;
+        browseButton.setBounds (railX + 10, 140 + tabs.size() * 66 + 16, railW - 20, 44);
+        const int wheelY = 140 + tabs.size() * 66 + 16 + 44 + 18;
         const int wheelH = juce::jmax (80, getHeight() - 64 - 16 - wheelY);
         pitchWheel.setBounds (railX + 12, wheelY, (railW - 32) / 2, wheelH);
         modWheel.setBounds (railX + 20 + (railW - 32) / 2, wheelY, (railW - 32) / 2, wheelH);
@@ -2163,8 +2612,8 @@ private:
         runButton.setColour (juce::TextButton::buttonOnColourId, Acid::accentFor (Acid::green));
         skinButton.setColour (juce::TextButton::buttonOnColourId, Acid::violet);
         browseButton.setColour (juce::TextButton::buttonOnColourId, Acid::accentFor (Acid::cyan));
-        static const char* const skinNames[] = { "SKIN: NEON", "SKIN: VINTAGE", "SKIN: CHROME", "SKIN: ROBOT", "SKIN: HYPER" };
-        skinButton.setButtonText (skinNames[juce::jlimit (0, 4, Acid::skin)]);
+        static const char* const skinNames[] = { "SKIN: NEON", "SKIN: VINTAGE", "SKIN: CHROME", "SKIN: ROBOT", "SKIN: HYPER", "SKIN: BULLY" };
+        skinButton.setButtonText (skinNames[juce::jlimit (0, Acid::numSkins - 1, Acid::skin)]);
 
         bpmKnob = std::make_unique<Knob> (proc.apvts, "bpm", "TEMPO", Acid::violet);
         volumeKnob = std::make_unique<Knob> (proc.apvts, "volume", "MASTER", Acid::violet);
@@ -2178,9 +2627,9 @@ private:
         console = std::make_unique<Console> (proc);
         addAndMakeVisible (*console);
 
-        const char* tabNames[] = { "OSC", "FILTER", "ENV", "LFO", "MATRIX", "FX", "SEQ" };
-        const juce::Colour tabCols[] = { Acid::green, Acid::cyan, Acid::orange, Acid::magenta, Acid::violet, Acid::yellow, Acid::green };
-        for (int i = 0; i < 7; ++i)
+        const char* tabNames[] = { "OSC", "FILTER", "ENV", "LFO", "MATRIX", "FX", "SEQ / ARP", "PERFORM" };
+        const juce::Colour tabCols[] = { Acid::green, Acid::cyan, Acid::orange, Acid::magenta, Acid::violet, Acid::yellow, Acid::green, Acid::magenta };
+        for (int i = 0; i < 8; ++i)
         {
             auto* t = tabs.add (new juce::TextButton (tabNames[i]));
             t->setColour (juce::TextButton::buttonOnColourId, Acid::accentFor (tabCols[i]));
@@ -2197,6 +2646,7 @@ private:
         pages.add (new MatrixPage (proc));
         pages.add (new FxPage (proc));
         pages.add (new SeqPage (proc));
+        pages.add (new PerformPage (proc));
         for (auto* pg : pages) addChildComponent (pg);
 
         tabs[currentPage]->setToggleState (true, juce::dontSendNotification);
@@ -2208,11 +2658,12 @@ private:
 
     void switchSkin()
     {
-        // Hyper -> Robot -> Chrome -> Vintage -> Neon -> Hyper
-        const int next = Acid::skin == Acid::Hyper ? Acid::Robot
+        // Bully -> Hyper -> Robot -> Chrome -> Vintage -> Neon -> Bully
+        const int next = Acid::skin == Acid::Bully ? Acid::Hyper
+                       : Acid::skin == Acid::Hyper ? Acid::Robot
                        : Acid::skin == Acid::Robot ? Acid::Chrome
                        : Acid::skin == Acid::Chrome ? Acid::Vintage
-                       : Acid::skin == Acid::Vintage ? Acid::Neon : Acid::Hyper;
+                       : Acid::skin == Acid::Vintage ? Acid::Neon : Acid::Bully;
         proc.skin = next;
         Acid::applySkin (next);
         lnf.refreshColours();
@@ -2283,15 +2734,10 @@ AcidanceEditor::AcidanceEditor (AcidanceProcessor& p)
     if (auto* c = getConstrainer()) c->setFixedAspectRatio ((double) baseWidth / baseHeight);
     const float scale = juce::jlimit (0.5f, 1.5f, proc.uiScale.load());
     setSize (juce::roundToInt (baseWidth * scale), juce::roundToInt (baseHeight * scale));
-
-    glContext.setComponentPaintingEnabled (true);
-    glContext.setContinuousRepainting (false);
-    glContext.attachTo (*this);
 }
 
 AcidanceEditor::~AcidanceEditor()
 {
-    glContext.detach();
     view.reset();
     setLookAndFeel (nullptr);
 }

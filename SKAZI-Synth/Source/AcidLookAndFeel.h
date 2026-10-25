@@ -6,10 +6,12 @@
 //   2 = Chrome (brushed aluminium with cyan / magenta / UV-purple neon and bloom).
 //   3 = Robot (gunmetal mech HUD: chamfered plates, LED rings, cyan + signal orange).
 //   4 = Hyper (black + graphite hardware, red LCD displays, red LED buttons, red cheeks).
+//   5 = Bully (the BULLY look: purple-black glass, rainbow frames, silver knobs with neon rings; default).
 namespace Acid
 {
-    enum Skin { Neon = 0, Vintage = 1, Chrome = 2, Robot = 3, Hyper = 4 };
-    inline int skin = Hyper;
+    enum Skin { Neon = 0, Vintage = 1, Chrome = 2, Robot = 3, Hyper = 4, Bully = 5 };
+    constexpr int numSkins = 6;
+    inline int skin = Bully;
 
     inline juce::Colour bg, panel, panel2, line, text, dim, green, cyan, orange, magenta, violet, yellow;
     inline juce::Colour screen, screenDim;   // display glass and the text drawn on it
@@ -33,6 +35,14 @@ namespace Acid
             green = juce::Colour (0xffeea640); cyan = juce::Colour (0xffe7dcc2); orange = juce::Colour (0xffe07b39);
             magenta = juce::Colour (0xffd2533f); violet = juce::Colour (0xffd8c7a0); yellow = juce::Colour (0xfff3c45c);
             screen = bg; screenDim = dim;
+        }
+        else if (s == Bully)
+        {
+            bg = juce::Colour (0xff07040f);  panel = juce::Colour (0xff0e0820); panel2 = juce::Colour (0xff150c2c);
+            line = juce::Colour (0xff3a2c66); text = juce::Colour (0xffeee9ff);  dim = juce::Colour (0xff9b90c4);
+            green = juce::Colour (0xff39ff7a); cyan = juce::Colour (0xff00e5ff); orange = juce::Colour (0xffff8a1f);
+            magenta = juce::Colour (0xffff00c8); violet = juce::Colour (0xff9a5bff); yellow = juce::Colour (0xffffe600);
+            screen = juce::Colour (0xff05030c); screenDim = juce::Colour (0xff9b90c4);
         }
         else if (s == Hyper)
         {
@@ -58,6 +68,16 @@ namespace Acid
             magenta = juce::Colour (0xffff00ff); violet = juce::Colour (0xff8a2be2); yellow = juce::Colour (0xff00ffff);
             screen = juce::Colour (0xff07070e); screenDim = juce::Colour (0xff8f93a8);
         }
+    }
+
+    // The BULLY rainbow: pink, yellow, green, cyan, violet
+    inline juce::ColourGradient rainbow (float x0, float y0, float x1, float y1)
+    {
+        juce::ColourGradient g (juce::Colour (0xffff00c8), x0, y0, juce::Colour (0xff7a2bff), x1, y1, false);
+        g.addColour (0.25, juce::Colour (0xffffe600));
+        g.addColour (0.5, juce::Colour (0xff39ff7a));
+        g.addColour (0.75, juce::Colour (0xff00e5ff));
+        return g;
     }
 
     // Vintage uses one amber lamp colour everywhere for a consistent hardware look
@@ -151,7 +171,7 @@ namespace Acid
             juce::PathStrokeType (width * 1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded).createStrokedPath (outline, p);
             juce::DropShadow (c.withAlpha (0.85f), (int) (width * 4.f) + 4, {}).drawForPath (g, outline);
         }
-        else if (skin == Neon || skin == Robot || skin == Hyper)
+        else if (skin == Neon || skin == Robot || skin == Hyper || skin == Bully)
         {
             g.setColour (c.withAlpha (0.10f)); g.strokePath (p, juce::PathStrokeType (width * 3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
             g.setColour (c.withAlpha (0.22f)); g.strokePath (p, juce::PathStrokeType (width * 2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
@@ -293,6 +313,18 @@ public:
     void drawComboBox (juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox& box) override
     {
         auto r = juce::Rectangle<float> (0.f, 0.f, (float) w, (float) h).reduced (1.f);
+        if (Acid::skin == Acid::Bully)
+        {
+            g.setColour (juce::Colour (0xff120a26));
+            g.fillRoundedRectangle (r, 4.f);
+            g.setColour (box.isMouseOver (true) ? Acid::magenta : Acid::line);
+            g.drawRoundedRectangle (r, 4.f, 1.f);
+            juce::Path arrow;
+            arrow.addTriangle ((float) w - 20.f, (float) h * 0.5f - 3.f, (float) w - 12.f, (float) h * 0.5f - 3.f, (float) w - 16.f, (float) h * 0.5f + 3.f);
+            g.setColour (Acid::cyan);
+            g.fillPath (arrow);
+            return;
+        }
         if (Acid::skin == Acid::Hyper)
         {
             g.setColour (juce::Colour (0xff1a1a1e));
@@ -346,6 +378,11 @@ public:
         if (Acid::skin == Acid::Hyper)
         {
             drawHyperKnob (g, x, y, w, h, pos, startAngle, endAngle, s);
+            return;
+        }
+        if (Acid::skin == Acid::Bully)
+        {
+            drawBullyKnob (g, x, y, w, h, pos, startAngle, endAngle, s);
             return;
         }
         if (Acid::skin == Acid::Robot)
@@ -460,6 +497,25 @@ public:
             Acid::rubberKey (g, r, accent, on, over || down);
             return;
         }
+        if (Acid::skin == Acid::Bully)
+        {
+            // BULLY buttons: lit = solid neon, off = dark glass with a neon edge on hover
+            if (on)
+            {
+                g.setColour (accent.withAlpha (0.3f));
+                g.fillRoundedRectangle (r.expanded (1.5f), 5.f);
+                g.setColour (accent);
+                g.fillRoundedRectangle (r, 4.f);
+            }
+            else
+            {
+                g.setColour (down ? juce::Colour (0xff24183f) : juce::Colour (0xff150c2c));
+                g.fillRoundedRectangle (r, 4.f);
+                g.setColour (over ? accent : Acid::line);
+                g.drawRoundedRectangle (r, 4.f, 1.f);
+            }
+            return;
+        }
 
         if (Acid::skin == Acid::Robot)
         {
@@ -550,6 +606,53 @@ public:
     juce::Font getSliderPopupFont (juce::Slider&) override { return Acid::font (13.f); }
 
 private:
+    // BULLY knob: neon value ring, then a polished metal knob with a knurled edge, silver dome and dark pointer
+    static void drawBullyKnob (juce::Graphics& g, int x, int y, int w, int h, float pos, float start, float end, juce::Slider& s)
+    {
+        const auto accent = s.findColour (juce::Slider::rotarySliderFillColourId);
+        const float r = std::min (w, h) * 0.5f - 4.f;
+        const float cx = x + w * 0.5f, cy = y + h * 0.5f;
+        const float ang = start + pos * (end - start);
+        const bool bipolar = (bool) s.getProperties().getWithDefault ("bipolar", false);
+        auto arc = [&] (float a0, float a1, float rad) { juce::Path p; p.addCentredArc (cx, cy, rad, rad, 0.f, a0, a1, true); return p; };
+        g.setColour (accent.withAlpha (0.18f));
+        g.strokePath (arc (start, end, r), juce::PathStrokeType (3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        const float from = bipolar ? (start + end) * 0.5f : start;
+        if (std::abs (ang - from) > 0.01f)
+        {
+            const auto p = arc (std::min (from, ang), std::max (from, ang), r);
+            g.setColour (accent.withAlpha (0.25f));
+            g.strokePath (p, juce::PathStrokeType (7.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.setGradientFill (juce::ColourGradient (accent, cx - r, cy + r, juce::Colours::white, cx + r, cy - r, false));
+            g.strokePath (p, juce::PathStrokeType (3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+        const float kr = r * 0.72f;
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        g.fillEllipse (cx - kr - 1, cy - kr + 1.5f, kr * 2 + 2, kr * 2 + 2);
+        g.setColour (juce::Colour (0xff9aa0a8));
+        g.fillEllipse (cx - kr, cy - kr, kr * 2, kr * 2);
+        g.setColour (juce::Colour (0xff3a3e44));
+        const int teeth = std::max (18, (int) (kr * 2.4f));
+        for (int i = 0; i < teeth; ++i)
+        {
+            const float a = juce::MathConstants<float>::twoPi * (float) i / (float) teeth;
+            g.drawLine (cx + (kr - 2.2f) * std::sin (a), cy - (kr - 2.2f) * std::cos (a), cx + kr * std::sin (a), cy - kr * std::cos (a), 1.1f);
+        }
+        const float dr = kr - 2.3f;
+        juce::ColourGradient dome (juce::Colours::white, cx - dr * 0.35f, cy - dr * 0.45f, juce::Colour (0xff4b5058), cx + dr * 0.6f, cy + dr * 0.9f, true);
+        dome.addColour (0.35, juce::Colour (0xffd9dde2));
+        dome.addColour (0.7, juce::Colour (0xff8f959d));
+        g.setGradientFill (dome);
+        g.fillEllipse (cx - dr, cy - dr, dr * 2, dr * 2);
+        g.setColour (accent.withAlpha (0.35f));
+        g.drawEllipse (cx - kr - 1.8f, cy - kr - 1.8f, kr * 2 + 3.6f, kr * 2 + 3.6f, 2.4f);
+        g.setColour (accent);
+        g.drawEllipse (cx - kr - 1.2f, cy - kr - 1.2f, kr * 2 + 2.4f, kr * 2 + 2.4f, 0.9f);
+        g.setColour (juce::Colour (0xff1a1c20));
+        g.drawLine (cx + kr * 0.15f * std::sin (ang), cy - kr * 0.15f * std::cos (ang),
+                    cx + (kr - 2.8f) * std::sin (ang), cy - (kr - 2.8f) * std::cos (ang), std::max (1.8f, kr * 0.16f));
+    }
+
     // Black rubber knob on a dark skirt, white index line, red value arc and scale dots
     static void drawHyperKnob (juce::Graphics& g, int x, int y, int w, int h, float pos, float startAngle, float endAngle, juce::Slider& s)
     {

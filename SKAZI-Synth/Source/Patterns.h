@@ -16,6 +16,7 @@ struct BassStep
     std::atomic<int8_t> gate { 0 };
     std::atomic<int8_t> accent { 0 };
     std::atomic<int8_t> slide { 0 };
+    std::atomic<int8_t> lock[4] { 0, 0, 0, 0 };   // step locks -100..100: cutoff, resonance, decay, drive (0 = off)
 
     int midiNote() const { return 36 + note.load() + (octave.load() - 1) * 12; }
 };
@@ -29,7 +30,30 @@ struct BassBank
         for (auto& s : steps[p])
         {
             s.note = 0; s.octave = 1; s.gate = 0; s.accent = 0; s.slide = 0;
+            for (auto& l : s.lock) l = 0;
         }
+    }
+
+    // Step locks, saved next to the pattern data (8 hex characters per step)
+    juce::String serialiseLocks() const
+    {
+        juce::String out;
+        for (auto& pat : steps)
+            for (auto& s : pat)
+                for (auto& l : s.lock) out << juce::String::toHexString ((int) l.load() + 128).paddedLeft ('0', 2);
+        return out;
+    }
+
+    void deserialiseLocks (const juce::String& str)
+    {
+        int i = 0;
+        for (auto& pat : steps)
+            for (auto& s : pat)
+                for (auto& l : s.lock)
+                {
+                    l = (int8_t) (str.length() >= i + 2 ? juce::jlimit (-100, 100, str.substring (i, i + 2).getHexValue32() - 128) : 0);
+                    i += 2;
+                }
     }
 
     void randomise (int p, uint32_t seed)

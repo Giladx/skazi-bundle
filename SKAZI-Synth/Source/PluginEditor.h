@@ -1,6 +1,5 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
-#include <juce_opengl/juce_opengl.h>
 #include "PluginProcessor.h"
 #include "AcidLookAndFeel.h"
 
@@ -40,8 +39,8 @@ private:
 class MainView;
 
 // The editor hosts one fixed-size MainView (1340 x 1000) and scales it, so the
-// window can be resized freely while keeping its proportions. Rendering goes
-// through OpenGL for smooth 60 fps displays.
+// window can be resized freely while keeping its proportions. It draws with JUCE's
+// standard renderer, like every other SKAZI plugin (no OpenGL context: one less GPU path).
 class AcidanceEditor : public juce::AudioProcessorEditor
 {
 public:
@@ -58,7 +57,6 @@ private:
     AcidanceProcessor& proc;
     AcidLookAndFeel lnf;
     std::unique_ptr<MainView> view;
-    juce::OpenGLContext glContext;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AcidanceEditor)
 };
