@@ -33,6 +33,10 @@ public:
     int getCurrentProgram() override { return currentProgram; }
     void setCurrentProgram (int index) override;
     void randomizeSound(); // RANDOM button: every section rolled again, loudness-checked
+
+    // A/B MORPH: snapshots of every sound parameter; MORPH blends them (message thread stores them)
+    void storeMorph (int which);          // 0 = A, 1 = B: the current sound
+    bool hasMorph (int which) const { return morphValid[which].load(); }
     const juce::String getProgramName (int index) override;
     void changeProgramName (int, const juce::String&) override {}
 
@@ -118,7 +122,22 @@ private:
     std::atomic<float>* pCompOn, *pCompMode, *pCompThr, *pCompRatio, *pCompAtt, *pCompRel, *pCompMakeup, *pCompDepth;
     std::atomic<float>* pEqOn, *pEqLf, *pEqLg, *pEqMf, *pEqMq, *pEqMg, *pEqHf, *pEqHg;
     std::atomic<float>* pVolume, *pPan;
-    std::atomic<float>* pOversample, *pWarmth, *pDrift;
+    std::atomic<float>* pOversample, *pWarmth, *pDrift, *pSpread;
+    std::atomic<float>* pMacro[kNumMacros];
+    std::atomic<float>* pMorphOn, *pMorph;
+    std::atomic<float>* pDuckOn, *pDuckDiv, *pDuckDepth, *pDuckRel, *pDuckCurve;
+
+    // Every parameter the engine reads goes through this shadow copy, refreshed at the start of each
+    // block: normally the plain values, with MORPH on a blend of snapshot A and B. The host and the
+    // knobs keep seeing the real parameters, so automation and undo stay clean.
+    struct Shadow { std::atomic<float>* raw; juce::RangedAudioParameter* param; bool morphs, stepped; };
+    std::vector<Shadow> shadowMap;
+    std::unique_ptr<std::atomic<float>[]> shadow;
+    std::unique_ptr<std::atomic<float>[]> morphA, morphB;
+    std::atomic<bool> morphValid[2] { false, false };
+    void refreshShadow();
+    std::atomic<float>* morphOnRaw = nullptr, *morphRaw = nullptr;   // the real parameters, not the shadow
+    double duckFreePos = 0.0;
 
     SynthVoice voices[kNumVoices + 1];
     VoiceParams vp;

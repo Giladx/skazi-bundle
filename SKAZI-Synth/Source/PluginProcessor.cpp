@@ -199,6 +199,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout AcidanceProcessor::createLay
     addF (l, "arp_gate", "Arp Gate", 0.05f, 1.f, 0.6f);
     addF (l, "arp_swing", "Arp Swing", 0.f, 1.f, 0.f);
     addF (l, "drift", "Analog Drift", 0.f, 1.f, 0.4f);
+    addF (l, "spread", "Voice Spread", 0.f, 1.f, 0.35f);
+    for (int m = 0; m < kNumMacros; ++m)
+        addF (l, "macro" + juce::String (m + 1), "Macro " + juce::String (m + 1), 0.f, 1.f, 0.f);
+    addB (l, "morph_on", "Morph On", false);
+    addF (l, "morph", "A/B Morph", 0.f, 1.f, 0.f);
+    addB (l, "duck_on", "Kick Duck On", false);
+    addC (l, "duck_div", "Kick Duck Rate", Lists::divisions, 8);
+    addF (l, "duck_depth", "Kick Duck Depth", 0.f, 1.f, 0.7f);
+    addF (l, "duck_rel", "Kick Duck Release", 0.05f, 1.f, 0.45f);
+    addF (l, "duck_curve", "Kick Duck Curve", 0.f, 1.f, 0.6f);
     return l;
 }
 
@@ -206,11 +216,24 @@ AcidanceProcessor::AcidanceProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "ACIDANCE", createLayout())
 {
+    // These never morph: transport, structure and the morph / macro controls themselves
+    static const juce::StringArray noMorph { "bpm", "run", "seq_on", "seq_pattern", "arp_on", "mode", "oversample",
+                                             "morph", "morph_on", "macro1", "macro2", "macro3", "macro4" };
+    const int numParams = getParameters().size();
+    shadow = std::make_unique<std::atomic<float>[]> ((size_t) numParams);
+    morphA = std::make_unique<std::atomic<float>[]> ((size_t) numParams);
+    morphB = std::make_unique<std::atomic<float>[]> ((size_t) numParams);
+    shadowMap.reserve ((size_t) numParams);
     auto get = [this] (const juce::String& id)
     {
-        auto* p = apvts.getRawParameterValue (id);
-        jassert (p != nullptr);
-        return p;
+        auto* raw = apvts.getRawParameterValue (id);
+        auto* param = apvts.getParameter (id);
+        jassert (raw != nullptr && param != nullptr);
+        const bool stepped = dynamic_cast<juce::AudioParameterFloat*> (param) == nullptr;
+        const size_t i = shadowMap.size();
+        shadowMap.push_back ({ raw, param, ! noMorph.contains (id), stepped });
+        shadow[i] = raw->load();
+        return &shadow[i];
     };
 
     for (int o = 0; o < 2; ++o)
@@ -264,7 +287,12 @@ AcidanceProcessor::AcidanceProcessor()
     pEqOn = get ("eq_on"); pEqLf = get ("eq_lf"); pEqLg = get ("eq_lg"); pEqMf = get ("eq_mf"); pEqMq = get ("eq_mq");
     pEqMg = get ("eq_mg"); pEqHf = get ("eq_hf"); pEqHg = get ("eq_hg");
     pVolume = get ("volume"); pPan = get ("pan");
-    pOversample = get ("oversample"); pWarmth = get ("warmth"); pDrift = get ("drift");
+    pOversample = get ("oversample"); pWarmth = get ("warmth"); pDrift = get ("drift"); pSpread = get ("spread");
+    for (int m = 0; m < kNumMacros; ++m) pMacro[m] = get ("macro" + juce::String (m + 1));
+    pMorphOn = get ("morph_on"); pMorph = get ("morph");
+    morphOnRaw = apvts.getRawParameterValue ("morph_on"); morphRaw = apvts.getRawParameterValue ("morph");
+    pDuckOn = get ("duck_on"); pDuckDiv = get ("duck_div"); pDuckDepth = get ("duck_depth");
+    pDuckRel = get ("duck_rel"); pDuckCurve = get ("duck_curve");
 
     for (int v = 0; v <= kNumVoices; ++v) voices[v].seed ((uint32_t) (v + 1) * 7919u);
     for (int p = 0; p < kNumPatterns; ++p) seq.randomise (p, (uint32_t) (1234 + p * 77));
@@ -638,6 +666,7 @@ void AcidanceProcessor::seqStepStart (int step)
         const bool slide = lastSlide && sv.isActive() && ! sv.isReleased();
         if (! slide) resetLfoPhasesIfIdle();
         sv.start (note, 1.f, s.accent.load() != 0, ! slide, slide, vp);
+        sv.setLocks (s.lock[0].load() * 0.01f, s.lock[1].load() * 0.01f, s.lock[2].load() * 0.01f, s.lock[3].load() * 0.01f);
         lastVoice = kNumVoices;
         lastSlide = s.slide.load() != 0;
     }
@@ -852,9 +881,35 @@ void AcidanceProcessor::arpFire()
     ++arpIndex;
 }
 
+void AcidanceProcessor::storeMorph (int which)
+{
+    auto& snap = which == 0 ? morphA : morphB;
+    for (size_t i = 0; i < shadowMap.size(); ++i) snap[i] = shadowMap[i].raw->load();
+    morphValid[which] = true;
+}
+
+void AcidanceProcessor::refreshShadow()
+{
+    const bool morphing = morphValid[0].load() && morphValid[1].load();
+    const bool active = morphing && morphOnRaw->load() > 0.5f;
+    const float k = morphRaw->load();
+    for (size_t i = 0; i < shadowMap.size(); ++i)
+    {
+        const auto& m = shadowMap[i];
+        float v = m.raw->load();
+        if (active && m.morphs)
+        {
+            const float a = morphA[i].load(), b = morphB[i].load();
+            v = m.stepped ? (k < 0.5f ? a : b) : a + (b - a) * k;
+        }
+        shadow[i].store (v, std::memory_order_relaxed);
+    }
+}
+
 void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
+    refreshShadow();
     const int numSamples = buffer.getNumSamples();
     buffer.clear();
 
@@ -986,6 +1041,8 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     vp.accent = pAccent->load(); vp.velSens = pVelSens->load();
     vp.warmth = pWarmth->load();
     vp.drift = pDrift->load();
+    vp.spread = pSpread->load();
+    for (int m = 0; m < kNumMacros; ++m) gm.macro[m] = pMacro[m]->load();
     const float glide = pGlide->load();
     const float seqGlide = glide > 0.001f ? glide : 0.06f;
 
@@ -998,6 +1055,7 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         src[S_Env2] = lv.envOut[1]; src[S_Env3] = lv.envOut[2]; src[S_Env4] = lv.envOut[3];
         src[S_ModWheel] = gm.modWheel; src[S_Velocity] = lastVelocity;
         src[S_Aftertouch] = gm.aftertouch; src[S_Keytrack] = lastKey;
+        for (int m = 0; m < kNumMacros; ++m) src[S_Macro1 + m] = gm.macro[m];
         for (int k = 0; k < vp.numActiveMods; ++k)
             gmod[vp.mods[k].dst] += src[vp.mods[k].src] * vp.mods[k].amt;
     }
@@ -1184,6 +1242,34 @@ void AcidanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         eq.process (outL, outR, numSamples, pEqLf->load(), pEqLg->load(), pEqMf->load(), pEqMq->load(),
                     pEqMg->load(), pEqHf->load(), pEqHg->load());
 
+    // Kick duck: a sidechain-style dip on every beat of the chosen rate, locked to the song (or RUN,
+    // or a free clock when nothing plays). 1.5 ms attack so the dip itself never clicks.
+    if (pDuckOn->load() > 0.5f)
+    {
+        const double divBeats = Lists::divisionBeats[juce::jlimit (0, 13, (int) pDuckDiv->load())];
+        const float depth = pDuckDepth->load(), rel = std::max (0.05f, pDuckRel->load());
+        const float power = 1.f + pDuckCurve->load() * 3.f;
+        const double beatsPerSample = bpm / 60.0 / sr;
+        const double atk = 0.0015 * bpm / 60.0 / divBeats;   // attack as a share of one duck period
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const double beats = playing ? (pos16 + i * inc16) * 0.25 : duckFreePos + i * beatsPerSample;
+            double ph = beats / divBeats;
+            ph -= std::floor (ph);
+            float dip;
+            if (ph < atk) dip = (float) (ph / atk);
+            else
+            {
+                const float t = (float) ((ph - atk) / rel);
+                dip = t >= 1.f ? 0.f : std::pow (1.f - t, power);
+            }
+            const float gn = 1.f - depth * dip;
+            outL[i] *= gn;
+            outR[i] *= gn;
+        }
+    }
+    if (! playing) duckFreePos += numSamples * bpm / 60.0 / sr;
+
     const float vol = pVolume->load(), pan = pPan->load();
     const float gl = vol * std::min (1.f, 1.f - pan), gr = vol * std::min (1.f, 1.f + pan);
     for (int i = 0; i < numSamples; ++i)
@@ -1211,6 +1297,16 @@ std::unique_ptr<juce::XmlElement> AcidanceProcessor::createStateXml()
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
     auto* extra = xml->createNewChildElement ("ACIDANCE_DATA");
     extra->setAttribute ("seq", seq.serialise());
+    extra->setAttribute ("seqLocks", seq.serialiseLocks());
+    for (int w = 0; w < 2; ++w)
+        if (morphValid[w].load())
+        {
+            juce::String s;
+            auto& snap = w == 0 ? morphA : morphB;
+            for (size_t i = 0; i < shadowMap.size(); ++i)
+                s << shadowMap[i].param->getParameterID() << "=" << juce::String (snap[i].load(), 5) << ";";
+            extra->setAttribute (w == 0 ? "morphA" : "morphB", s);
+        }
     extra->setAttribute ("program", currentProgram);
     extra->setAttribute ("presetName", currentPresetName);
     extra->setAttribute ("presetFolder", currentPresetFolder);
@@ -1230,6 +1326,20 @@ void AcidanceProcessor::applyStateXml (const juce::XmlElement& source)
     if (auto* extra = xml.getChildByName ("ACIDANCE_DATA"))
     {
         seq.deserialise (extra->getStringAttribute ("seq"));
+        seq.deserialiseLocks (extra->getStringAttribute ("seqLocks"));
+        for (int w = 0; w < 2; ++w)
+        {
+            const auto s = extra->getStringAttribute (w == 0 ? "morphA" : "morphB");
+            auto& snap = w == 0 ? morphA : morphB;
+            for (size_t i = 0; i < shadowMap.size(); ++i) snap[i] = shadowMap[i].raw->load();   // missing entries: as now
+            for (auto& kv : juce::StringArray::fromTokens (s, ";", ""))
+            {
+                const auto id = kv.upToFirstOccurrenceOf ("=", false, false);
+                for (size_t i = 0; i < shadowMap.size(); ++i)
+                    if (shadowMap[i].param->getParameterID() == id) { snap[i] = kv.fromFirstOccurrenceOf ("=", false, false).getFloatValue(); break; }
+            }
+            morphValid[w] = s.isNotEmpty();
+        }
         currentProgram = juce::jlimit (0, Presets::count() - 1, extra->getIntAttribute ("program"));
         currentPresetName = extra->getStringAttribute ("presetName", Presets::name (currentProgram));
         currentPresetFolder = extra->getStringAttribute ("presetFolder", Presets::category (currentProgram));

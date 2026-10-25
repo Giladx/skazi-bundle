@@ -28,7 +28,8 @@ namespace Lists
     inline const juce::StringArray compModes  { "Normal", "OTT" };
 
     inline const juce::StringArray modSources { "None", "LFO 1", "LFO 2", "LFO 3", "LFO 4", "LFO 5", "LFO 6", "LFO 7", "LFO 8",
-                                                "Env 2 (Filter)", "Env 3", "Env 4", "Mod Wheel", "Velocity", "Aftertouch", "Keytrack", "Random" };
+                                                "Env 2 (Filter)", "Env 3", "Env 4", "Mod Wheel", "Velocity", "Aftertouch", "Keytrack", "Random",
+                                                "Macro 1", "Macro 2", "Macro 3", "Macro 4" };
     inline const juce::StringArray modDests   { "None", "Osc 1 Pitch", "Osc 2 Pitch", "Osc 1 WT Pos", "Osc 2 WT Pos",
                                                 "Osc 1 Level", "Osc 2 Level", "Osc 1 Warp", "Osc 2 Warp", "Unison Detune",
                                                 "Sub Level", "Noise Level", "Filter 1 Cutoff", "Filter 2 Cutoff",
@@ -38,7 +39,8 @@ namespace Lists
 }
 
 enum ModSource { S_None, S_Lfo1, S_Lfo2, S_Lfo3, S_Lfo4, S_Lfo5, S_Lfo6, S_Lfo7, S_Lfo8,
-                 S_Env2, S_Env3, S_Env4, S_ModWheel, S_Velocity, S_Aftertouch, S_Keytrack, S_Random, S_Count };
+                 S_Env2, S_Env3, S_Env4, S_ModWheel, S_Velocity, S_Aftertouch, S_Keytrack, S_Random,
+                 S_Macro1, S_Macro2, S_Macro3, S_Macro4, S_Count };
 
 enum ModDest
 {
@@ -52,6 +54,8 @@ constexpr int kNumModSlots = 16;
 constexpr int kNumLfos = 8;
 constexpr int kNumEnvs = 4;
 constexpr int kLfoSteps = 16;
+constexpr int kNumMacros = 4;
+constexpr int kNumLocks = 4;   // step-lock lanes: cutoff, resonance, decay, drive
 
 enum DistType { DTube, DSoft, DHard, DCrush, DFuzz, DFold, DRectify, DDiode, DScream, DDestroy };
 enum ArpMode { ArpUp, ArpDown, ArpUpDown, ArpDownUp, ArpRandom, ArpPlayed, ArpChord, ArpConverge };

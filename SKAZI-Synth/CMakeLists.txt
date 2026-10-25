@@ -95,4 +95,11 @@ if(SKAZI_BUILD_TESTS)
     target_compile_definitions(RandomTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="SKAZI")
     target_link_libraries(RandomTest PRIVATE juce::juce_audio_utils juce::juce_dsp
         PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+
+    # step locks, kick duck, A/B morph, macros, voice cards
+    juce_add_console_app(FeatureTest PRODUCT_NAME "FeatureTest")
+    target_sources(FeatureTest PRIVATE Tools/FeatureTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/Presets.cpp)
+    target_compile_definitions(FeatureTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="SKAZI")
+    target_link_libraries(FeatureTest PRIVATE juce::juce_audio_utils juce::juce_dsp
+        PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 endif()

@@ -117,6 +117,7 @@ struct VoiceParams
     float accent = 0.5f, velSens = 0.5f;
     float warmth = 0.3f;     // pre- and post-filter analog saturation
     float drift = 0.4f;      // ANALOG: slow per-voice pitch drift + per-note pitch / cutoff spread
+    float spread = 0.35f;    // VOICE SPREAD: each voice card's fixed offsets in cutoff, envelopes, tuning, pan
     uint32_t lfoUsed = 0xff;  // bit per LFO that any mod slot reads (unused LFOs are skipped)
     int numActiveMods = kNumModSlots;
 };
@@ -125,6 +126,7 @@ struct GlobalMod
 {
     float lfo[kNumLfos] {};
     float modWheel = 0.f, aftertouch = 0.f, bend = 0.f;
+    float macro[kNumMacros] {};
 };
 
 //==============================================================================
@@ -282,7 +284,16 @@ public:
         for (auto& e : envOut) e = 0.f;
     }
 
-    void seed (uint32_t s) { rng = s * 2654435761u + 1u; }
+    // Each voice is its own "voice card": fixed small differences set once from its seed
+    void seed (uint32_t s)
+    {
+        rng = s * 2654435761u + 1u;
+        cardCut = rand01() * 2.f - 1.f; cardEnv = rand01() * 2.f - 1.f;
+        cardTune = rand01() * 2.f - 1.f; cardPan = rand01() * 2.f - 1.f;
+    }
+
+    // Step locks from the sequencer (-1..1 each, 0 = off): cutoff, resonance, decay, drive
+    void setLocks (float cut, float res, float decay, float drive) { lockCut = cut; lockRes = res; lockDecay = decay; lockDrive = drive; }
 
     // retrigger=false keeps envelopes running (legato); glideFrom=true slides pitch
     void start (int midiNote, float velocity, bool accented, bool retrigger, bool glideFrom, const VoiceParams& p)
@@ -290,6 +301,7 @@ public:
         if (! glideFrom || note < 0) currentNote = (float) midiNote;
         targetNote = (float) midiNote;
         gliding = glideFrom && note >= 0;
+        lockCut = lockRes = lockDecay = lockDrive = 0.f;
         note = midiNote;
         vel = velocity;
         accent = accented;
@@ -345,7 +357,12 @@ public:
             currentNote = targetNote;
 
         for (int i = 0; i < kNumEnvs; ++i)
-            envOut[i] = env[i].next (p.env[i].a, p.env[i].d, p.env[i].s, p.env[i].r);
+        {
+            // voice card: envelope times differ a little per voice; a DECAY step lock scales env 1 + 2 decay x0.25..x4
+            const float card = 1.f + cardEnv * p.spread * 0.15f;
+            const float dec = i < 2 && lockDecay != 0.f ? std::exp2 (lockDecay * 2.f) : 1.f;
+            envOut[i] = env[i].next (p.env[i].a * card, p.env[i].d * card * dec, p.env[i].s, p.env[i].r * card);
+        }
         accentEnv *= accentDecay;
 
         // LFOs (per voice when retriggered, otherwise the shared global value)
@@ -371,6 +388,7 @@ public:
         src[S_Env2] = envOut[1]; src[S_Env3] = envOut[2]; src[S_Env4] = envOut[3];
         src[S_ModWheel] = g.modWheel; src[S_Velocity] = vel; src[S_Aftertouch] = g.aftertouch;
         src[S_Keytrack] = (currentNote - 60.f) / 24.f; src[S_Random] = randomVal;
+        for (int m = 0; m < kNumMacros; ++m) src[S_Macro1 + m] = g.macro[m];
         float mod[D_Count] {};
         for (int k = 0; k < p.numActiveMods; ++k)   // active slots are packed first by the processor
             mod[p.mods[k].dst] += src[p.mods[k].src] * p.mods[k].amt;
@@ -396,7 +414,8 @@ public:
             const auto& os = p.osc[o];
             if (! os.on) { center[o] = 0.f; continue; }
             const float level = std::clamp (os.level + mod[D_Osc1Level + o], 0.f, 1.f);
-            const float analog = p.drift * (driftNow[o] * 0.06f + noteDetune[o] * 0.03f);   // up to 6 + 3 cents
+            const float analog = p.drift * (driftNow[o] * 0.06f + noteDetune[o] * 0.03f)   // up to 6 + 3 cents
+                               + p.spread * cardTune * 0.05f;                                // voice card tuning
             const float semis = currentNote + os.semis + mod[D_Osc1Pitch + o] * 24.f + g.bend + analog;
             const float baseHz = 440.f * std::exp2 ((semis - 69.f) / 12.f);
             const float wt = std::clamp (os.wtPos + mod[D_Osc1Wt + o], 0.f, 1.f);
@@ -494,8 +513,9 @@ public:
                             + accentEnv * accAmt * 1.5f
                             + fs.key * (currentNote - 60.f) / 12.f
                             + mod[D_Cut1 + f] * 6.f;
-            fc[f] = std::clamp (fs.cutoff * std::exp2 (oct + noteCutoff * p.drift * 0.08f), 20.f, std::min (20000.f, sr * 0.45f));
-            res[f] = std::clamp (fs.reso + mod[D_Res1 + f] + accAmt * 0.08f, 0.f, 1.f);
+            fc[f] = std::clamp (fs.cutoff * std::exp2 (oct + noteCutoff * p.drift * 0.08f + cardCut * p.spread * 0.15f + lockCut * 3.f),
+                                20.f, std::min (20000.f, sr * 0.45f));
+            res[f] = std::clamp (fs.reso + mod[D_Res1 + f] + accAmt * 0.08f + lockRes * 0.5f, 0.f, 1.f);
         }
 
         float aL = oL[0] + subS, aR = oR[0] + subS;
@@ -507,27 +527,28 @@ public:
         }
         float L, R;
         const int t1 = p.flt[0].type, t2 = p.flt[1].type;
+        const float drive1 = std::clamp (p.flt[0].drive + lockDrive * 0.7f, 0.f, 1.f);   // DRIVE step lock
         if (p.routing == 0)
         {
             L = aL + bL; R = aR + bR;
-            flt[0].process (t1, fc[0], res[0], p.flt[0].drive, L, R);
+            flt[0].process (t1, fc[0], res[0], drive1, L, R);
             flt[1].process (t2, fc[1], res[1], p.flt[1].drive, L, R);
         }
         else if (p.routing == 1 && t2 != 0)
         {
             float l1 = aL + bL, r1 = aR + bR, l2 = l1, r2 = r1;
-            flt[0].process (t1, fc[0], res[0], p.flt[0].drive, l1, r1);
+            flt[0].process (t1, fc[0], res[0], drive1, l1, r1);
             flt[1].process (t2, fc[1], res[1], p.flt[1].drive, l2, r2);
             L = (l1 + l2) * 0.6f; R = (r1 + r2) * 0.6f;
         }
         else if (p.routing == 1)
         {
             L = aL + bL; R = aR + bR;
-            flt[0].process (t1, fc[0], res[0], p.flt[0].drive, L, R);
+            flt[0].process (t1, fc[0], res[0], drive1, L, R);
         }
         else
         {
-            flt[0].process (t1, fc[0], res[0], p.flt[0].drive, aL, aR);
+            flt[0].process (t1, fc[0], res[0], drive1, aL, aR);
             flt[1].process (t2, fc[1], res[1], p.flt[1].drive, bL, bR);
             L = aL + bL; R = aR + bR;
         }
@@ -536,7 +557,7 @@ public:
 
         const float velGain = 1.f - p.velSens * (1.f - vel);
         const float amp = envOut[0] * velGain * (1.f + accAmt * 0.4f) * std::clamp (1.f + mod[D_Amp], 0.f, 2.f);
-        const float pan = std::clamp (mod[D_Pan], -1.f, 1.f);
+        const float pan = std::clamp (mod[D_Pan] + cardPan * p.spread * 0.25f, -1.f, 1.f);
         outL += L * amp * std::min (1.f, 1.f - pan);
         outR += R * amp * std::min (1.f, 1.f + pan);
     }
@@ -624,6 +645,8 @@ private:
     int noiseHold = 0;
     float currentNote = 60.f, targetNote = 60.f, vel = 1.f, accentEnv = 0.f, time = 0.f, randomVal = 0.f;
     float driftNow[2] {}, driftTarget[2] {}, noteDetune[2] {}, noteCutoff = 0.f;
+    float cardCut = 0.f, cardEnv = 0.f, cardTune = 0.f, cardPan = 0.f;
+    float lockCut = 0.f, lockRes = 0.f, lockDecay = 0.f, lockDrive = 0.f;
     int driftHold = 0;
     float accentDecay = 0.99985f;
     int note = -1;
