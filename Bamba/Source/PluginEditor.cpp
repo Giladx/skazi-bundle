@@ -69,9 +69,20 @@ void BambaDisplay::paint (Graphics& g)
         float a = sh.amp;
         if (rollAmt > 0.0f)
         {
-            const float rise = std::pow (p, std::pow (2.0f, (s.curve - 0.5f) * 4.0f));
-            rollPh += 2.0 * std::pow (4.0, (double) rise) * beats / (double) w;
-            a *= 1.0f - rollAmt * (1.0f - (float) std::exp (-(rollPh - std::floor (rollPh)) * 6.0));
+            double phase;
+            if (s.rollRate == RollFree)
+            {
+                const float rise = std::pow (p, std::pow (2.0f, (s.curve - 0.5f) * 4.0f));
+                rollPh += 2.0 * std::pow (4.0, (double) rise) * beats / (double) w;
+                phase = rollPh - std::floor (rollPh);
+            }
+            else
+            {
+                const double hits = p * beats * rollHitsPerBeat (s.rollRate, p);
+                phase = hits - std::floor (hits);
+            }
+            const double k = 6.0 * std::pow (5.0, (s.rollDecay - 0.5) * 2.0);
+            a *= 1.0f - rollAmt * (1.0f - (float) std::exp (-phase * k));
         }
         const float ya = bot - a * h, yf = bot - (sh.filter * s.sweep + (1.0f - s.sweep)) * h, yp = bot - sh.pitch * h;
         const float px = in.getX() + x;
@@ -317,11 +328,19 @@ BambaEditor::BambaEditor (BambaProcessor& p)
     delay = &addKnob ("delay", "DELAY", green, "%", 34);
     gain = &addKnob ("gain", "GAIN", skin::white, "dB", 34);
     outMeter = &addMeter (p.engine.uiOut);
+    rateRow = &addChoiceRow ("rrate");
+    rdecay = &addKnob ("rdecay", "DECAY", red, "%", 34);
+    roll->slider.setTooltip ("Roll gate amount (SNARE ROLL always rolls fully)");
+    rdecay->slider.setTooltip ("How short each roll hit is: low = smooth pulses, high = tight snare hits");
 
     // Splice layer
     const auto blue = Colour (0xff6fc8ff);
-    smix = &addKnob ("smix", "SAMPLE", blue, "%", 30);
-    synth = &addKnob ("synth", "SYNTH", red, "%", 30);
+    smix = &addKnob ("smix", "SAMPLE", blue, "%", 34);
+    synth = &addKnob ("synth", "SYNTH", red, "%", 34);
+    synfx = &addKnob ("synfx", "SYNTH FX", green, "%", 34);
+    smpfx = &addKnob ("smpfx", "SAMPLE FX", green, "%", 34);
+    synfx->slider.setTooltip ("How much of the synth goes into the delay and reverb");
+    smpfx->slider.setTooltip ("How much of the Splice sample goes into the delay and reverb");
     stune = &addKnob ("stune", "TUNE", blue, "st", 30);
     sshape = &addKnob ("sshape", "FOLLOW", blue, "%", 30);
     fitBox = &addCombo ("sfit");
@@ -344,7 +363,7 @@ BambaEditor::BambaEditor (BambaProcessor& p)
     offset->slider.setTooltip ("SYNC mode: which bar the effect starts on");
     roll->slider.setTooltip ("Stutter gate that speeds up from 1/8 to 1/32 as it builds");
 
-    setSize (1000, 640);
+    setSize (1000, 744);
 }
 
 void BambaEditor::layout()
@@ -361,16 +380,30 @@ void BambaEditor::layout()
         browser.setBounds (140, sy + 8, 500, 28);
         kindChips.setBounds (140, sy + 44, 330, 22);
         lengthChips.setBounds (478, sy + 44, 162, 22);
-        put (*smix, 650, sy + 8, 30, 48);
-        put (*synth, 700, sy + 8, 30, 48);
-        put (*stune, 750, sy + 8, 30, 48);
-        put (*sshape, 800, sy + 8, 30, 48);
+        put (*stune, 680, sy + 8, 30, 52);
+        put (*sshape, 760, sy + 8, 30, 52);
         fitBox->setBounds (858, sy + 8, 112, 22);
         alignBox->setBounds (858, sy + 34, 112, 22);
         revBtn->setBounds (858, sy + 60, 112, 20);
     }
 
-    const int y = 422, h = 176;
+    // Roll with beat quantize, and the mixer between the sources and the FX
+    {
+        const int ry = 422;
+        panel ({ 20, ry, 560, 96 }, "ROLL + QUANTIZE");
+        label ({ 32, ry + 30, 300, 12 }, "FREE = SMOOTH SPEED-UP   BUILD = 1/4 > 1/8 > 1/16 > 1/32");
+        rateRow->setBounds (32, ry + 48, 420, 34);
+        put (*roll, 456, ry + 26, 34, 52);
+        put (*rdecay, 514, ry + 26, 34, 52);
+
+        panel ({ 588, ry, 392, 96 }, "MIXER");
+        put (*synth, 600, ry + 26, 34, 80);
+        put (*smix, 690, ry + 26, 34, 80);
+        put (*synfx, 790, ry + 26, 34, 80);
+        put (*smpfx, 880, ry + 26, 34, 80);
+    }
+
+    const int y = 526, h = 176;
     panel ({ 20, y, 220, h }, "LENGTH");
     triggerRow->setBounds (100, y + 6, 132, 20);
     label ({ 32, y + 38, 80, 12 }, "BARS");
@@ -388,9 +421,8 @@ void BambaEditor::layout()
     panel ({ 526, y, 250, h }, "MOVEMENT");
     put (*sweep, 534, y + 40, 66, 90);
     put (*reso, 626, y + 32, 34, 70);
-    put (*roll, 696, y + 32, 34, 70);
-    put (*width, 626, y + 104, 34, 70);
-    put (*phaser, 696, y + 104, 34, 70);
+    put (*phaser, 696, y + 32, 34, 70);
+    put (*width, 660, y + 104, 34, 70);
 
     panel ({ 784, y, 196, h }, "SPACE + OUT");
     put (*reverb, 790, y + 32, 34, 70);

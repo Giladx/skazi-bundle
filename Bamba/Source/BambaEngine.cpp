@@ -46,6 +46,11 @@ const std::vector<skazi::ParamDef>& paramDefs()
         { "stune", "Sample Tune", P::Float, -24, 24, 0, "st", 1 },
         { "sshape", "Sample Shape", P::Float, 0, 100, 30, "%", 0.1f },
         { "srev", "Sample Reverse", P::Bool, 0, 1, 0 },
+        // roll quantize and mixer (1.1)
+        { "rrate", "Roll Rate", P::Choice, 0, 8, 0, "", 1, 1, { "FREE", "BUILD", "1/2", "1/4", "1/8", "1/16", "1/32", "1/64", "1/128" } },
+        { "rdecay", "Roll Decay", P::Float, 0, 100, 50, "%", 0.1f },
+        { "synfx", "Synth FX Send", P::Float, 0, 100, 100, "%", 0.1f },
+        { "smpfx", "Sample FX Send", P::Float, 0, 100, 100, "%", 0.1f },
     };
     return defs;
 }
@@ -64,6 +69,7 @@ Settings Settings::fromValues (const std::function<float (const char*)>& v)
     s.reverb = v ("reverb") * 0.01f; s.delay = v ("delay") * 0.01f; s.gain = juce::Decibels::decibelsToGain (v ("gain"));
     s.synth = v ("synth") * 0.01f; s.sampleLevel = v ("smix") * 0.01f; s.sampleTune = v ("stune"); s.sampleShape = v ("sshape") * 0.01f;
     s.sampleFit = (int) v ("sfit"); s.sampleAlign = (int) v ("salign"); s.sampleReverse = v ("srev") > 0.5f;
+    s.rollRate = (int) v ("rrate"); s.rollDecay = v ("rdecay") * 0.01f; s.synthFx = v ("synfx") * 0.01f; s.sampleFx = v ("smpfx") * 0.01f;
     return s;
 }
 
@@ -90,6 +96,13 @@ SamplePtr makeSample (const juce::AudioBuffer<float>& audio, double rate)
         o = juce::jmax (o, std::abs (d->l[(size_t) i]), std::abs (d->r[(size_t) i]));
     }
     return d;
+}
+
+double rollHitsPerBeat (int rate, float progress)
+{
+    if (rate == RollFree) return 0.0;
+    if (rate == RollBuild) return progress < 0.25f ? 1.0 : progress < 0.5f ? 2.0 : progress < 0.75f ? 4.0 : 8.0;
+    return 0.5 * std::exp2 (juce::jlimit (0, 6, rate - Roll2)); // 1/2 = half a hit per beat ... 1/128 = 32
 }
 
 SamplePlacement placeSample (const Settings& s, double sampleSeconds, double lenSeconds)
@@ -127,6 +140,8 @@ void Engine::prepare (double sampleRate)
 {
     sr = sampleRate;
     for (auto& d : dl) d.assign ((size_t) (sr * 4.0) + 1, 0.0f);
+    dryL.assign (8192, 0.0f);
+    dryR.assign (8192, 0.0f);
     dlPos = 0;
     reverb.setSampleRate (sr);
     reverb.reset();
@@ -141,6 +156,7 @@ void Engine::start (int note, const Settings& s, juce::int64 seed)
     type = s.type;
     noteSemis = (float) (note - 60);
     ph[0] = ph[1] = zapPh = rollPh = sirenPh = subPh = 0;
+    evT = 0;
     if (type == RandomFx)
     {
         juce::Random r (seed);
@@ -327,14 +343,7 @@ void Engine::sample (const Settings& s, float& l, float& r)
     if (type == Impact) noiseAmt *= std::exp (-tSec / 0.04f) * 0.9f;
     if (type == SubDrop || type == Impact) toneAmt = juce::jmax (toneAmt, 0.8f) * 0.55f;
 
-    // roll: a gate whose hits speed up from 1/8 to 1/32 as the effect builds
-    float gate = 1.0f;
-    const float rollUse = type == SnareRoll ? 1.0f : rollAmt;
-    if (rollUse > 0.0f)
-    {
-        rollPh += 2.0 * std::pow (4.0, (double) rise) * bpm / 60.0 / sr;
-        gate = 1.0f - rollUse * (1.0f - (float) std::exp (-frac (rollPh) * 6.0));
-    }
+    juce::ignoreUnused (rollAmt, rise);
 
     // filter sweep (high-pass for the crash), phaser, amp
     const float cut = juce::jlimit (30.0f, (float) (0.45 * sr), 80.0f * std::exp2 ((sh.filter * sweep + (1.0f - sweep)) * 7.8f));
@@ -368,7 +377,7 @@ void Engine::sample (const Settings& s, float& l, float& r)
             }
             y = (y + z * s.phaser) / (1.0f + s.phaser * 0.5f);
         }
-        out[c] = y * sh.amp * gate * 0.5f;
+        out[c] = y * sh.amp * 0.5f;
     }
     l = out[0];
     r = out[1];
@@ -377,6 +386,7 @@ void Engine::sample (const Settings& s, float& l, float& r)
 void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi, const Settings& s, juce::AudioPlayHead* playHead)
 {
     const int n = out.getNumSamples();
+    if ((int) dryL.size() < n) { dryL.assign ((size_t) n, 0.0f); dryR.assign ((size_t) n, 0.0f); } // a host block bigger than promised
     const auto ht = skazi::hostTime (playHead);
     bpm = ht.bpm;
     if (ht.playing) ppq = ht.ppq;
@@ -411,21 +421,49 @@ void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi
             }
         }
 
-        float l = 0.0f, r = 0.0f;
-        if (active)
+        // MIXER: synth and sample levels, and how much of each goes on to the delay and reverb
+        float l = 0.0f, r = 0.0f, dl0 = 0.0f, dr0 = 0.0f;
+        if (active || sActive)
         {
-            sample (s, l, r);
-            l *= s.synth;
-            r *= s.synth;
-            t += 1.0;
-            if (t >= len) active = false;
-        }
-        if (sActive)
-        {
-            float sl, sr2;
-            samplePlay (s, sl, sr2);
-            l += sl;
-            r += sr2;
+            float yl = 0.0f, yr = 0.0f, sl = 0.0f, sr2 = 0.0f;
+            if (active)
+            {
+                sample (s, yl, yr);
+                yl *= s.synth;
+                yr *= s.synth;
+                t += 1.0;
+                if (t >= len) active = false;
+            }
+            if (sActive)
+                samplePlay (s, sl, sr2);
+
+            // ROLL: a gate over synth and sample, FREE (speeds up 1/8 -> 1/32) or quantized to the beat
+            const float rollUse = type == SnareRoll ? 1.0f : (s.type == RandomFx ? rRoll : s.roll);
+            float gate = 1.0f;
+            if (rollUse > 0.0f)
+            {
+                const float p = (float) juce::jmin (1.0, evT / len);
+                const float rise = std::pow (p, std::pow (2.0f, (s.curve - 0.5f) * 4.0f));
+                double phase;
+                if (s.rollRate == RollFree)
+                {
+                    rollPh += 2.0 * std::pow (4.0, (double) rise) * bpm / 60.0 / sr;
+                    phase = frac (rollPh);
+                }
+                else
+                {
+                    const double beat = ht.playing ? ppq + i * bpm / 60.0 / sr : evT * bpm / 60.0 / sr;
+                    phase = frac (beat * rollHitsPerBeat (s.rollRate, p));
+                }
+                const double k = 6.0 * std::pow (5.0, (s.rollDecay - 0.5) * 2.0);
+                gate = 1.0f - rollUse * (1.0f - (float) std::exp (-phase * k));
+            }
+            evT += 1.0;
+
+            l = (yl * s.synthFx + sl * s.sampleFx) * gate;
+            r = (yr * s.synthFx + sr2 * s.sampleFx) * gate;
+            dl0 = (yl * (1.0f - s.synthFx) + sl * (1.0f - s.sampleFx)) * gate;
+            dr0 = (yr * (1.0f - s.synthFx) + sr2 * (1.0f - s.sampleFx)) * gate;
         }
         if (releasing)
         {
@@ -433,10 +471,14 @@ void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi
             if (fade <= 0.0f) { fade = 0.0f; active = sActive = false; }
             l *= fade;
             r *= fade;
+            dl0 *= fade;
+            dr0 *= fade;
         }
         if (! active && ! sActive) releasing = false;
         L[i] = l;
         if (R != L) R[i] = r;
+        dryL[(size_t) i] = dl0;
+        dryR[(size_t) i] = R != L ? dr0 : 0.5f * (dl0 + dr0);
     }
 
     // 3/16 ping-pong delay (always running so its echoes ring out after the effect ends)
@@ -462,6 +504,13 @@ void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi
     reverb.setParameters (rp);
     if (R != L) reverb.processStereo (L, R, n);
     else        reverb.processMono (L, n);
+
+    // the un-sent part joins after the FX, at the reverb's dry level so 100% sends sound like 1.0
+    for (int i = 0; i < n; ++i)
+    {
+        L[i] += dryL[(size_t) i] * rp.dryLevel;
+        if (R != L) R[i] += dryR[(size_t) i] * rp.dryLevel;
+    }
 
     const float decay = (float) std::exp (-(double) n / (0.2 * sr));
     for (int i = 0; i < n; ++i)

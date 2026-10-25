@@ -59,11 +59,11 @@ private:
     SampleBrowser browser;
     Chips kindChips { { "ALL", "RISE", "DOWN", "SWEEP", "IMPACT", "REVERSE" } }, lengthChips { { "ANY", "SHORT", "LONG" } };
     juce::TextButton playBtn { "PLAY" };
-    skazi::ChoiceRow *typeRow, *triggerRow;
+    skazi::ChoiceRow *typeRow, *triggerRow, *rateRow;
     juce::ComboBox *barsBox, *fitBox, *alignBox;
     skazi::ParamToggle* revBtn;
     skazi::Knob *curve, *offset, *noise, *color, *tone, *pfrom, *pto, *sweep, *reso, *roll, *width, *phaser, *reverb, *delay, *gain;
-    skazi::Knob *smix, *synth, *stune, *sshape;
+    skazi::Knob *smix, *synth, *stune, *sshape, *rdecay, *synfx, *smpfx;
     skazi::Meter* outMeter;
     int shownVersion = -1, shownKind = -2, shownLength = -1;
     bool shownScanning = false;

@@ -32,8 +32,8 @@ public:
     bamba::SamplePtr getSample() const { return std::atomic_load (&sampleData); }
     juce::File getSampleFile() const { return juce::File (apvts.state.getProperty ("sampleFile").toString()); }
 
-    // The browser's filters, saved with the session: kind -1 = all kinds, length RiserLibrary::Length
-    int getBrowseKind() const { return (int) apvts.state.getProperty ("browseKind", -1); }
+    // The browser's filters, saved with the session: kind -1 = all kinds (RISE to start with), length RiserLibrary::Length
+    int getBrowseKind() const { return (int) apvts.state.getProperty ("browseKind", 0); }
     int getBrowseLength() const { return (int) apvts.state.getProperty ("browseLength", 0); }
     void setBrowseFilter (int kind, int length);
     /** The library's samples that pass the filters, shortest first. */

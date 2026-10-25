@@ -12,6 +12,10 @@ enum Type { Uplifter, Downlifter, NoiseSweep, Impact, SnareRoll, ReverseCrash, L
 enum Trigger { Sync, Midi };
 enum SampleFit { FitOriginal, FitStretch, FitVarispeed };
 enum SampleAlign { AlignStart, AlignEnd };
+// ROLL timing: FREE speeds up smoothly (1.0 behaviour), BUILD steps 1/4 -> 1/8 -> 1/16 -> 1/32 on the beat,
+// the rest are a fixed note value locked to the host's beat grid
+enum RollRate { RollFree, RollBuild, Roll2, Roll4, Roll8, Roll16, Roll32, Roll64, Roll128 };
+double rollHitsPerBeat (int rate, float progress); // 0 for FREE
 
 const std::vector<skazi::ParamDef>& paramDefs();
 int barsFor (int barsChoice); // 1, 2, 4, 8, 16
@@ -25,6 +29,8 @@ struct Settings
     // sample layer
     float synth = 1.0f, sampleLevel = 0.8f, sampleTune = 0, sampleShape = 0.3f;
     int sampleFit = FitStretch, sampleAlign = AlignEnd; bool sampleReverse = false;
+    // roll quantize and mixer
+    int rollRate = RollFree; float rollDecay = 0.5f, synthFx = 1.0f, sampleFx = 1.0f;
     static Settings fromValues (const std::function<float (const char*)>& v);
 };
 
@@ -84,6 +90,8 @@ private:
     float noiseLp[2] {}, ic1[2] {}, ic2[2] {};
     float ap[2][4] {}; double phaserPh = 0;
     std::vector<float> dl[2]; int dlPos = 0;
+    std::vector<float> dryL, dryR; // the part of the mix that skips the delay and reverb (FX sends below 100%)
+    double evT = 0;                // samples since the note started
     juce::Reverb reverb;
     float peak = 0;
 

@@ -199,6 +199,85 @@ int main()
         expect (r.finite, "a one-sample file is harmless");
     }
 
+    // ---- roll quantize and mixer --------------------------------------------------------
+    {
+        // count the roll's hits: rising edges of a gated tone across one bar (2 s at 120 bpm)
+        auto hits = [] (const Settings& t)
+        {
+            const double sr = 48000.0;
+            Engine e;
+            e.prepare (sr);
+            juce::AudioBuffer<float> buf (2, 480);
+            std::vector<float> env;
+            for (int pos = 0; pos < 96000; pos += 480)
+            {
+                juce::MidiBuffer midi;
+                if (pos == 0) midi.addEvent (juce::MidiMessage::noteOn (1, 60, 1.0f), 0);
+                e.render (buf, midi, t, nullptr);
+                for (int i = 0; i < 480; i += 240) // 5 ms blocks: longer than a cycle of the tone
+                {
+                    float pk = 0;
+                    for (int j = 0; j < 240; ++j) pk = std::max (pk, std::abs (buf.getSample (0, i + j)));
+                    env.push_back (pk);
+                }
+            }
+            // a hit = rising above 60% of the loudest nearby block after dipping under 25%
+            int n = 0;
+            bool armed = true;
+            const int w = (int) env.size();
+            for (int i = 0; i < w; ++i)
+            {
+                float local = 0;
+                for (int j = std::max (0, i - 25); j < std::min (w, i + 25); ++j) local = std::max (local, env[(size_t) j]);
+                if (local < 1.0e-3f) continue;
+                if (env[(size_t) i] < 0.25f * local) armed = true;
+                else if (armed && env[(size_t) i] > 0.6f * local) { ++n; armed = false; }
+            }
+            return n;
+        };
+        auto t = s; t.trigger = Sync; t.reverb = 0; t.delay = 0; t.type = Laser; t.roll = 1; t.rollDecay = 0.9f;
+        t.type = Uplifter; t.noise = 0; t.tone = 1; t.curve = 0.0f; t.pitchFrom = 0; t.pitchTo = 0; t.sweep = 0;
+        t.rollRate = Roll4;
+        const int q = hits (t);
+        t.rollRate = Roll8;
+        const int e8 = hits (t);
+        t.rollRate = Roll16;
+        const int s16 = hits (t);
+        expect (q == 4 && e8 == 8 && s16 == 16, "ROLL 1/4, 1/8, 1/16: 4, 8, 16 hits in a bar",
+                juce::String (q) + ", " + juce::String (e8) + ", " + juce::String (s16));
+        t.rollRate = RollBuild; t.bars = 4; // 8 s: 2 bars of 1/4... a bar each of 1/4, 1/8, 1/16, 1/32 over 4 bars
+        expect (rollHitsPerBeat (RollBuild, 0.1f) == 1.0 && rollHitsPerBeat (RollBuild, 0.9f) == 8.0
+                    && rollHitsPerBeat (Roll2, 0) == 0.5 && rollHitsPerBeat (Roll128, 0) == 32.0, "BUILD steps 1/4 > 1/32; 1/2 .. 1/128 rates");
+
+        // every rate stays clean, with and without a sample
+        bool clean = true;
+        for (int rate = RollFree; rate <= Roll128; ++rate)
+        {
+            auto u = s; u.trigger = Sync; u.rollRate = rate; u.roll = 1; u.type = SnareRoll;
+            const auto r = render (u, 2.5, { 0 }, -1, testSample (2.0));
+            clean = clean && r.finite && r.peak <= 1.0f && r.rms > 0.005;
+        }
+        expect (clean, "every ROLL rate: clean and audible");
+
+        // the roll gates the sample too
+        auto g = s; g.trigger = Sync; g.reverb = 0; g.delay = 0; g.synth = 0; g.sampleShape = 0; g.roll = 1; g.rollRate = Roll4; g.rollDecay = 0.9f;
+        const auto gated = render (g, 2.0, { 0 }, -1, testSample (2.0));
+        g.roll = 0;
+        const auto open = render (g, 2.0, { 0 }, -1, testSample (2.0));
+        expect (gated.rms < open.rms * 0.6, "ROLL chops the Splice sample", juce::String (gated.rms, 3) + " vs " + juce::String (open.rms, 3));
+
+        // MIXER: a dry sample has no reverb tail; at 100% it rings like 1.0
+        auto m = s; m.trigger = Sync; m.synth = 0; m.reverb = 0.9f; m.delay = 0.6f; m.sampleFx = 0;
+        auto dry = render (m, 4.0, { 0 }, -1, testSample (1.0));
+        m.sampleFx = 1;
+        auto wet = render (m, 4.0, { 0 }, -1, testSample (1.0));
+        expect (dry.env[3] > 0.02f && dry.env[6] < 1.0e-4f && wet.env[6] > 0.003f, "SAMPLE FX 0%: no echoes or reverb after it",
+                "tail dry " + juce::String (dry.env[6], 5) + " wet " + juce::String (wet.env[6], 4));
+        auto y = s; y.trigger = Sync; y.reverb = 0.9f; y.synthFx = 0;
+        auto ydry = render (y, 4.0, { 0 });
+        expect (ydry.env[2] > 0.02f && ydry.env[6] < 1.0e-4f, "SYNTH FX 0%: synth stays dry");
+    }
+
     // ---- riser library -------------------------------------------------------------------
     {
         struct Case { const char* name; int kind; };
@@ -342,7 +421,7 @@ int main()
         juce::StringArray folders;
         for (auto& p : list) folders.addIfNotAlreadyThere (p.category);
         bool all = true;
-        for (auto* f : { "SHORT RISES", "LONG RISES", "DOWNLIFTERS", "NOISE SWEEPS", "PITCHED UPLIFTS", "FILTERED BUILDS", "REVERSE SWELLS",
+        for (auto* f : { "SNARE ROLLS", "QUANTIZED UPLIFTS", "SHORT RISES", "LONG RISES", "DOWNLIFTERS", "NOISE SWEEPS", "PITCHED UPLIFTS", "FILTERED BUILDS", "REVERSE SWELLS",
                          "IMPACTS", "PSYTRANCE", "TECHNO", "HOUSE", "SPLICE LAYER" })
             all = all && folders.contains (f);
         expect (all, "new preset folders", folders.joinIntoString (", "));
