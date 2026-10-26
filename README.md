@@ -19,8 +19,9 @@ Every plugin uses the vendor name **SKAZI**, so DAWs list them together.
 | `Salat` | SALAT | Glitch multi-FX: tempo-synced chopper (stutter, reverse, gate, tape stop, hold), drive, crush, resonant filter with synced LFO, ring mod, flanger/chorus, ping-pong delay, reverb, MAKE A SALAT randomizer, 104 presets |
 | `MidiGod` | MIDI GOD | MIDI pattern generator (instrument + MIDI out): 10 genres (full-on, prog psy, psy-tech, tech/deep/bass house, melodic/hard techno, trance, EDM) x 9 roles (bass, acid, lead, pluck, arp, chords, pad, counter, drums), key/scale/groove controls, drag the loop into the DAW as MIDI, audio to MIDI (melody, bass, drums, chords), 106 presets |
 | `Kube` | KUBE | Psytrance wavetable synth: 24 KUBE-only tables (growl, yoy and more), Serum .wav wavetable import (drag and drop), 2 warp slots per oscillator (sync, bend, PWM, asym, mirror, flip, quantize, FM/AM/RM), 16-voice unison with blend, lime-on-black skin, 106 presets |
+| `Quazi` | QUAZI | 4-band distortion: Linkwitz-Riley crossover with draggable splits, SOFT/HARD/FUZZ/TUBE drive and level per band at 4x oversampling, phase-matched dry/wet mix, stereo width with MONO BASS, 3-band post EQ (low shelf, bell, high shelf), 104 presets |
 
-`Common` holds the shared metal skin, knobs, preset bar and A/B code used by SUBICH, BAMBA, TAHINI, ZHUG, SALAT and MIDI GOD.
+`Common` holds the shared metal skin, knobs, preset bar and A/B code used by SUBICH, BAMBA, TAHINI, ZHUG, SALAT, MIDI GOD and QUAZI.
 
 Plugin IDs (manufacturer + plugin codes) are unchanged, so existing DAW projects keep loading them.
 
