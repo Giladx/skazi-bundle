@@ -18,6 +18,7 @@ Every plugin uses the vendor name **SKAZI**, so DAWs list them together.
 | `TBON303` | SKAZI 303 (TBON 303) | Acid bass line synth: 303-style diode ladder filter with accent and slide, sub oscillator, 14 drive types, circuit mods, chorus/delay/reverb/widener, 16-step sequencer with pattern generator, screaming resonance (self-oscillates at the top of the knob), 544 presets incl. 32 HARD ACID |
 | `Salat` | SALAT | Glitch multi-FX: tempo-synced chopper (stutter, reverse, gate, tape stop, hold), drive, crush, resonant filter with synced LFO, ring mod, flanger/chorus, ping-pong delay, reverb, MAKE A SALAT randomizer, 104 presets |
 | `MidiGod` | MIDI GOD | MIDI pattern generator (instrument + MIDI out): 10 genres (full-on, prog psy, psy-tech, tech/deep/bass house, melodic/hard techno, trance, EDM) x 9 roles (bass, acid, lead, pluck, arp, chords, pad, counter, drums), key/scale/groove controls, drag the loop into the DAW as MIDI, audio to MIDI (melody, bass, drums, chords), 106 presets |
+| `Kube` | KUBE | Psytrance wavetable synth: 24 KUBE-only tables (growl, yoy and more), Serum .wav wavetable import (drag and drop), 2 warp slots per oscillator (sync, bend, PWM, asym, mirror, flip, quantize, FM/AM/RM), 16-voice unison with blend, lime-on-black skin, 106 presets |
 
 `Common` holds the shared metal skin, knobs, preset bar and A/B code used by SUBICH, BAMBA, TAHINI, ZHUG, SALAT and MIDI GOD.
 

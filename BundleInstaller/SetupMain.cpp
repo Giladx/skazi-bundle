@@ -44,6 +44,7 @@ namespace
         if (name == "SALAT")          return "Glitch multi-FX + MAKE A SALAT randomizer";
         if (name == "SKAZI 303")      return "TBON 303 acid bass line synth + sequencer";
         if (name == "MIDI GOD")       return "MIDI pattern generator + audio to MIDI";
+        if (name == "KUBE")           return "Psytrance wavetable synth";
         return "Plugin";
     }
 
