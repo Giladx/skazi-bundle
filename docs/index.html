@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SKAZI Bundle · 12 Plugins by Asher Swissa</title>
-<meta name="description" content="SKAZI Bundle: 12 synths and effects for psytrance, techno and beyond. VST3 and AU for Windows and Mac. Free download.">
-<meta property="og:title" content="SKAZI Bundle · 12 Plugins by Asher Swissa">
-<meta property="og:description" content="Synths, kicks, acid and bass lines, risers, chops, sidechain, tape delay and saturation. VST3 / AU for Windows and Mac.">
-<meta property="og:image" content="img/skazi.png?v=3">
+<title>SKAZI Bundle · 13 Plugins by Asher Swissa</title>
+<meta name="description" content="SKAZI Bundle: 13 synths and effects for psytrance, techno and beyond. VST3 and AU for Windows and Mac. Free download.">
+<meta property="og:title" content="SKAZI Bundle · 13 Plugins by Asher Swissa">
+<meta property="og:description" content="Synths, kicks, acid and bass lines, MIDI patterns, risers, chops, sidechain, tape delay and saturation. VST3 / AU for Windows and Mac.">
+<meta property="og:image" content="img/skazi.png?v=5">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -94,6 +94,15 @@
   .chip{font-size:12px;font-weight:600;color:#d6d6dc;background:#1c1c23;border:1px solid #2a2a33;border-radius:6px;padding:4px 9px}
   .chip.hot{color:#fff;background:rgba(225,6,0,.16);border-color:rgba(225,6,0,.4)}
 
+  /* new in this update */
+  .news .grid{grid-template-columns:repeat(3,1fr);gap:16px}
+  .news .item{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:6px}
+  .news .item.new{grid-column:1/-1;border-color:rgba(225,6,0,.55);box-shadow:0 20px 50px -30px var(--glow)}
+  .news .tagline{font-size:11.5px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim)}
+  .news .item.new .tagline{color:var(--red2)}
+  .news h4{font-family:"Bebas Neue",Impact,sans-serif;font-weight:400;font-size:28px;letter-spacing:1px;line-height:1}
+  .news p{color:#c4c4cc;font-size:14.5px}
+  @media (max-width:900px){.news .grid{grid-template-columns:1fr}}
   /* install */
   .install{background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
   .tabs{display:flex;justify-content:center;gap:8px;margin-bottom:30px}
@@ -157,35 +166,50 @@
 <header class="hero" id="top">
   <div class="wrap">
     <div>
-      <span class="kicker"><i></i> 100% FREE DOWNLOAD · NEW: TBON 303 + SALAT</span>
+      <span class="kicker"><i></i> 100% FREE DOWNLOAD · NEW: MIDI GOD + SKAZI 1.3</span>
       <h1>SKAZI<br><span>BUNDLE</span></h1>
-      <p class="lead">12 synths and effects in one installer: two wavetable synths, a kick synth, an acid bass line synth, bass machine, risers, glitch chops and multi-FX, sidechain, tape delay and saturation. Built for psytrance, techno, house and everything in between.</p>
+      <p class="lead">13 synths and effects in one installer: two wavetable synths, a kick synth, an acid bass line synth, a MIDI pattern generator, bass machine, risers, glitch chops and multi-FX, sidechain, tape delay and saturation. Built for psytrance, techno, house and everything in between.</p>
       <div class="ctas" id="download">
         <a class="btn btn-red" href="https://github.com/slazoasher/skazi-bundle/releases/latest/download/SKAZI.Bundle.Setup.exe">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.1 10.4 4v7.1H3zm0 13.8 7.4 1.1v-7H3zm8.3 1.2L21 21.5V13h-9.7zm0-16.2v7.2H21V2.5z"/></svg>
-          <span class="txt">FREE Download for Windows<small>VST3 + standalone · 73 MB</small></span></a>
+          <span class="txt">FREE Download for Windows<small>VST3 + standalone · 79 MB</small></span></a>
         <a class="btn btn-dark" href="https://github.com/slazoasher/skazi-bundle/releases/latest/download/SKAZI.Bundle.pkg">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.6 1.3-.1 1.7-.8 3.3-.8 1.5 0 1.9.8 3.3.8 1.4 0 2.2-1.2 3-2.5.9-1.4 1.3-2.8 1.4-2.9-.1 0-2.6-1-2.6-4.1zM13.9 4.9c.7-.8 1.2-2 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z"/></svg>
           <span class="txt">FREE Download for Mac<small>AU + VST3 + apps · Apple Silicon & Intel</small></span></a>
       </div>
       <p class="meta"><b>Free</b> · Windows 10/11 & macOS 10.13+ · Works in Cubase, Ableton, FL Studio, Logic, Bitwig, Studio One, Reaper</p>
-      <p class="meta"><b style="color:#ff2bd6">Updated 25 Oct 2026:</b> <b>TBON 303</b> gets a harder filter: wider range, deeper sweeps and resonance that screams at the top, plus 32 new HARD ACID presets. <b>BULLY</b> gets <b>SHARP 24</b>, a sharp, strong resonant filter whose cutoff sits right where the knob says. Also new: <b>SALAT</b> glitch multi-FX with RISE, pitch build-ups up to 4 octaves locked to your bars. Already installed? Just download and install again: your projects keep their sounds.</p>
+      <p class="meta"><b style="color:#ff2bd6">Updated 26 Oct 2026:</b> new <b>MIDI GOD</b> pattern generator with audio to MIDI. <b>SKAZI 1.3</b>: Virus-style supersaw, PERFORM page, your own wavetables and 3,650 presets. <b>TAHINI 1.1</b>: 7 delay types, echo filter, drive and pitch. <b>BAMBA 1.1</b>: your Splice risers, quantized rolls and up to 24 bars. Plus BULLY SHARP 24, TBON 303 hard acid and SALAT RISE. Already installed? Just download and install again: your projects keep their sounds.</p>
     </div>
     <div class="shot">
       <img src="img/bully.png?v=3" alt="BULLY wavetable synth" class="zoom">
-      <div class="tag"><b style="color:#ff2bd6">NEW</b> · BULLY synth · <b>FREE</b> · 6,300+ presets</div>
+      <div class="tag"><b style="color:#ff2bd6">NEW</b> · BULLY synth · <b>FREE</b> · 7,900+ presets</div>
     </div>
   </div>
 </header>
 
 <div class="stats">
   <div class="wrap">
-    <div class="stat"><b>12</b><span>PLUGINS</span></div>
-    <div class="stat"><b>6,990</b><span>PRESETS</span></div>
+    <div class="stat"><b>13</b><span>PLUGINS</span></div>
+    <div class="stat"><b>7,958</b><span>PRESETS</span></div>
     <div class="stat"><b>VST3 · AU</b><span>FORMATS</span></div>
     <div class="stat"><b style="color:var(--red2)">FREE</b><span>DOWNLOAD · WIN &amp; MAC</span></div>
   </div>
 </div>
+
+<section class="news" id="new">
+  <div class="wrap">
+    <div class="head"><h2>NEW IN THIS UPDATE</h2><p>One new plugin and big updates across the bundle. Already installed? Download and install again: your projects keep their sounds.</p></div>
+    <div class="grid">
+      <div class="item new"><span class="tagline">New VST</span><h4>MIDI GOD</h4><p>MIDI pattern generator: bass, acid, leads, arps, chords and drums in 10 genres, drag the loop into your DAW, and audio to MIDI.</p></div>
+      <div class="item"><span class="tagline">Updated</span><h4>SKAZI 1.3</h4><p>Virus-style supersaw, PERFORM page with macros and A/B morph, your own wavetables, RANDOM that rolls every section, 3,650 presets, and a Cubase crash fix.</p></div>
+      <div class="item"><span class="tagline">Updated</span><h4>TAHINI 1.1</h4><p>7 delay types, resonant low and high cut plus drive inside the echoes, pitch on the repeats up to 24 semitones, 250 presets.</p></div>
+      <div class="item"><span class="tagline">Updated</span><h4>BAMBA 1.1</h4><p>Layer your own Splice risers, rolls quantized from 1/2 to 1/128 with a RATE knob, pitch up to 6 octaves, 1 to 24 bars, 260 presets.</p></div>
+      <div class="item"><span class="tagline">Updated</span><h4>BULLY</h4><p>New SHARP 24 filter: a strong resonant ladder whose cutoff sits right where the knob says.</p></div>
+      <div class="item"><span class="tagline">Updated</span><h4>TBON 303</h4><p>Harder filter with screaming resonance, 32 HARD ACID presets (544 in total), and a fix for a Cubase freeze when changing presets.</p></div>
+      <div class="item"><span class="tagline">Updated</span><h4>SALAT</h4><p>RISE: pitch build-ups over 2 to 16 bars, up to 4 octaves, starting and ending on your bar lines.</p></div>
+    </div>
+  </div>
+</section>
 
 <section id="plugins">
   <div class="wrap">
@@ -205,20 +229,20 @@
           <p>Kicks that hit like the real thing: a two-stage pitch envelope (a hard snap, then the body sweep down to your root note), hold and decay so the tail stops clean before the bassline, a 3-band EQ, and drive that is fully clean at zero. Layer a sample on top: KICKASS browses the kicks you've downloaded from Splice, so press &lt; &gt; to audition them, or keep a sample's punch over the KICKASS sub. KEY TRACK plays it like an instrument.</p>
           <div class="chips"><span class="chip hot">50 presets</span><span class="chip">Snap + sweep pitch</span><span class="chip">3-band EQ</span><span class="chip">Splice kick browser</span><span class="chip">Key track</span></div></div></article>
 
-      <article class="card"><div class="pic"><span class="badge inst">Instrument</span><img src="img/skazi.png?v=3" alt="SKAZI" class="zoom" loading="lazy"></div>
-        <div class="body"><h3>SKA<em>ZI</em></h3><div class="sub">Hyper wavetable synth</div>
-          <p>Two wavetable oscillators with warp (FM, AM, ring), sub and noise, two filters, 4 envelopes, 8 drawable LFOs, a 16-slot mod matrix, a step sequencer and a full FX rack.</p>
-          <div class="chips"><span class="chip hot">3,000 presets</span><span class="chip">Mod matrix</span><span class="chip">Pitch + mod wheels</span><span class="chip">Ring mod · bitcrush</span><span class="chip">Sequencer</span></div></div></article>
+      <article class="card"><div class="pic"><span class="badge inst">Instrument</span><img src="img/skazi.png?v=5" alt="SKAZI" class="zoom" loading="lazy"></div>
+        <div class="body"><h3>SKA<em>ZI</em></h3><div class="sub">Psy / acid / VA synth</div>
+          <p>Supersaw unison with analog drift, wavetables (load your own WAV), FOLD / PWM / ASYM shaping, an arpeggiator and a step sequencer with per-step locks, 10 distortion types and a full FX rack. The PERFORM page gives you 4 macros, A/B morph and kick duck, and RANDOM rolls every section at once.</p>
+          <div class="chips"><span class="chip hot">3,650 presets</span><span class="chip">Supersaw</span><span class="chip">PERFORM page</span><span class="chip">Your own wavetables</span><span class="chip">Arp + sequencer</span></div></div></article>
 
       <article class="card"><div class="pic"><span class="badge inst">Instrument</span><img src="img/subich.png?v=3" alt="SUBICH" class="zoom" loading="lazy"></div>
         <div class="body"><h3>SUB<em>ICH</em></h3><div class="sub">Bass + sub bass synth</div>
           <p>A synth made only for basslines: 2 oscillators, a dedicated sub, 2 filters, 2 LFOs, mono / legato / poly with glide, plus pitch and mod wheels.</p>
           <div class="chips"><span class="chip hot">1,000 bass presets</span><span class="chip">Psytrance</span><span class="chip">Techno</span><span class="chip">House</span><span class="chip">Indie dance</span></div></div></article>
 
-      <article class="card"><div class="pic"><span class="badge inst">Instrument</span><img src="img/bamba.png?v=3" alt="BAMBA" class="zoom" loading="lazy"></div>
-        <div class="body"><h3>BAM<em>BA</em></h3><div class="sub">Riser & FX maker</div>
-          <p>Uplifters, downlifters, impacts, snare rolls, reverse crashes, lasers, sirens and sub drops, played from the piano roll or your keyboard: hold the note for as long as you want, or let each note play the full 1 to 16 bars.</p>
-          <div class="chips"><span class="chip hot">10 FX types</span><span class="chip">Piano-roll triggered</span><span class="chip">Roll gate</span><span class="chip">Reverb · delay</span></div></div></article>
+      <article class="card"><div class="pic"><span class="badge inst">Instrument</span><img src="img/bamba.png?v=4" alt="BAMBA" class="zoom" loading="lazy"></div>
+        <div class="body"><h3>BAM<em>BA</em></h3><div class="sub">Riser & uplift maker</div>
+          <p>Uplifters, downlifters, snare rolls, impacts and sub drops from the piano roll, 1 to 24 bars. Layer your own Splice risers (short or long, stretched to the bars), quantize rolls from 1/2 to 1/128 with an automatable RATE, pitch up to +6 octaves with its own curve, and a mixer with FX sends.</p>
+          <div class="chips"><span class="chip hot">260 presets</span><span class="chip">Your Splice risers</span><span class="chip">Quantized rolls</span><span class="chip">Up to 24 bars</span><span class="chip">+6 octaves</span></div></div></article>
 
       <article class="card"><div class="pic"><span class="badge fx">Effect</span><img src="img/shaksuka.png?v=3" alt="SHAKSUKA" class="zoom" loading="lazy"></div>
         <div class="body"><h3>SHAK<em>SUKA</em></h3><div class="sub">Random chop & glitch FX</div>
@@ -230,10 +254,10 @@
           <p>Ten pump shapes or draw your own, synced to the song, triggered by MIDI or by your kick. Pre-amp with auto gain lifts quiet signals before they pump.</p>
           <div class="chips"><span class="chip hot">105 presets</span><span class="chip">Draw mode</span><span class="chip">Audio sidechain</span><span class="chip">Auto pre-amp</span></div></div></article>
 
-      <article class="card"><div class="pic"><span class="badge fx">Effect</span><img src="img/tahini.png?v=3" alt="TAHINI" class="zoom" loading="lazy"></div>
-        <div class="body"><h3>TAH<em>INI</em></h3><div class="sub">Tape delay + space reverb</div>
-          <p>Ping-pong, stereo and tape echoes with pitch spirals, reverse, tape stops and old-tape age, into a lush reverb with freeze and ducking.</p>
-          <div class="chips"><span class="chip hot">150 presets</span><span class="chip">Pitch spiral</span><span class="chip">Reverse</span><span class="chip">Tape stop</span><span class="chip">Freeze</span></div></div></article>
+      <article class="card"><div class="pic"><span class="badge fx">Effect</span><img src="img/tahini.png?v=4" alt="TAHINI" class="zoom" loading="lazy"></div>
+        <div class="body"><h3>TAH<em>INI</em></h3><div class="sub">Space delay + reverb</div>
+          <p>Seven delay types (ping-pong, stereo, tape, digital, BBD, multi-tap, dual) with a resonant low and high cut and tape / tube / fuzz / crush drive inside the echoes, pitch on the repeats up to ±24 semitones with a shimmer blend, reverse and tape stops, into a reverb with freeze and ducking.</p>
+          <div class="chips"><span class="chip hot">250 presets</span><span class="chip">7 delay types</span><span class="chip">Echo filter + drive</span><span class="chip">Pitch on repeats</span><span class="chip">Freeze</span></div></div></article>
 
       <article class="card"><div class="pic"><span class="badge fx">Effect</span><img src="img/zhug.png?v=3" alt="ZHUG" class="zoom" loading="lazy"></div>
         <div class="body"><h3>ZH<em>UG</em></h3><div class="sub">Saturator + widener</div>
@@ -255,13 +279,18 @@
           <p>A tempo-synced chopper (stutter, reverse, gate, tape stop, hold) that sits first, middle or last in the chain, with drive, bitcrush, a resonant filter with synced LFO, ring mod, flanger, chorus, ping-pong delay and reverb. RISE builds long pitch rises over 2 to 16 bars, up to 4 octaves, starting and ending on your bar lines. MAKE A SALAT throws a random mix together.</p>
           <div class="chips"><span class="chip hot">104 presets</span><span class="chip">MAKE A SALAT</span><span class="chip">RISE up to 4 octaves</span><span class="chip">Chop · drive · crush</span><span class="chip">Delay · reverb</span></div></div></article>
 
+      <article class="card"><div class="pic"><span class="badge inst">New · MIDI</span><img src="img/midigod.png?v=1" alt="MIDI GOD" class="zoom" loading="lazy"></div>
+        <div class="body"><h3>MIDI <em>GOD</em></h3><div class="sub">MIDI pattern generator + audio to MIDI</div>
+          <p>Writes basslines, acid lines, leads, plucks, arps, chords, pads and drums in 10 genres from full-on psy to hard techno, in your key and groove. GOD MODE rolls a new variation, then drag the loop straight onto a track in your DAW. Drop in audio and it turns melody, bass, drums or chords into MIDI.</p>
+          <div class="chips"><span class="chip hot">106 presets</span><span class="chip">10 genres x 9 roles</span><span class="chip">Drag MIDI to the DAW</span><span class="chip">Audio to MIDI</span></div></div></article>
+
     </div>
   </div>
 </section>
 
 <section class="install" id="install">
   <div class="wrap">
-    <div class="head"><h2>INSTALL IN 1 MINUTE</h2><p>One installer puts all 12 plugins in place. They show up under <b>SKAZI</b> in your DAW.</p></div>
+    <div class="head"><h2>INSTALL IN 1 MINUTE</h2><p>One installer puts all 13 plugins in place. They show up under <b>SKAZI</b> in your DAW.</p></div>
     <div class="tabs"><button class="tab on" data-t="win">Windows</button><button class="tab" data-t="mac">Mac</button></div>
     <div class="steps on" id="win">
       <div class="step"><div class="n">01</div><h4>Download & close your DAW</h4><p>Get <code>SKAZI.Bundle.Setup.exe</code> above and close Cubase, Ableton or whatever you use.</p></div>
@@ -285,7 +314,7 @@
         <li><span>Mac</span>macOS 10.13+, Apple Silicon & Intel</li>
         <li><span>Formats</span>VST3 · AU (Mac) · Standalone apps</li>
         <li><span>Hosts</span>Cubase, Ableton Live, FL Studio, Logic, Bitwig, Studio One, Reaper and more</li>
-        <li><span>Size</span>73 MB (Windows) · 124 MB (Mac)</li>
+        <li><span>Size</span>79 MB (Windows) · 144 MB (Mac)</li>
         <li><span>Price</span><b style="color:var(--red2)">FREE</b></li>
       </ul>
     </div>
@@ -301,11 +330,11 @@
 
 <section class="final">
   <div class="wrap">
-    <div class="head"><h2>GET THE <span style="color:var(--red)">SKAZI</span> SOUND</h2><p>12 plugins. 6,990 presets. <b style="color:#fff">100% free download</b>, no account, no catch.</p></div>
+    <div class="head"><h2>GET THE <span style="color:var(--red)">SKAZI</span> SOUND</h2><p>13 plugins. 7,958 presets. <b style="color:#fff">100% free download</b>, no account, no catch.</p></div>
     <div class="ctas">
       <a class="btn btn-red" href="https://github.com/slazoasher/skazi-bundle/releases/latest/download/SKAZI.Bundle.Setup.exe">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.1 10.4 4v7.1H3zm0 13.8 7.4 1.1v-7H3zm8.3 1.2L21 21.5V13h-9.7zm0-16.2v7.2H21V2.5z"/></svg>
-        <span class="txt">FREE Download for Windows<small>73 MB</small></span></a>
+        <span class="txt">FREE Download for Windows<small>79 MB</small></span></a>
       <a class="btn btn-dark" href="https://github.com/slazoasher/skazi-bundle/releases/latest/download/SKAZI.Bundle.pkg">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.6 1.3-.1 1.7-.8 3.3-.8 1.5 0 1.9.8 3.3.8 1.4 0 2.2-1.2 3-2.5.9-1.4 1.3-2.8 1.4-2.9-.1 0-2.6-1-2.6-4.1zM13.9 4.9c.7-.8 1.2-2 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z"/></svg>
         <span class="txt">FREE Download for Mac<small>Apple Silicon & Intel</small></span></a>
