@@ -45,7 +45,6 @@ namespace
         if (name == "SKAZI 303")      return "TBON 303 acid bass line synth + sequencer";
         if (name == "MIDI GOD")       return "MIDI pattern generator + audio to MIDI";
         if (name == "KUBE")           return "Psytrance wavetable synth";
-        if (name == "QUAZI")          return "4-band fuzz + stereo width + post EQ";
         return "Plugin";
     }
 

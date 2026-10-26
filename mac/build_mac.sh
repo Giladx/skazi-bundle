@@ -59,7 +59,6 @@ build Salat       Salat      "SALAT"          FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
 build TBON303     Skazi303   "SKAZI 303"      FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
 build MidiGod     MidiGod    "MIDI GOD"       FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
 build Kube        Kube       "KUBE"           FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
-build Quazi       Quazi      "QUAZI"          FETCHCONTENT_SOURCE_DIR_JUCE "$J4"
 
 cp "$ROOT/mac/Uninstall SKAZI Bundle.command" "$STAGE/Applications/SKAZI/"
 chmod +x "$STAGE/Applications/SKAZI/Uninstall SKAZI Bundle.command"
