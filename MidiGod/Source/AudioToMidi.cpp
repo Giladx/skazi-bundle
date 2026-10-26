@@ -63,7 +63,7 @@ float mean (const std::vector<float>& v) { return v.empty() ? 0.0f : std::accumu
 float percentile (std::vector<float> v, float p)
 {
     if (v.empty()) return 0.0f;
-    const size_t k = juce::jlimit<size_t> (0, v.size() - 1, (size_t) (p * (float) (v.size() - 1)));
+    const size_t k = std::min (v.size() - 1, (size_t) (p * (float) (v.size() - 1)));
     std::nth_element (v.begin(), v.begin() + (long) k, v.end());
     return v[k];
 }
@@ -221,7 +221,7 @@ std::vector<Note> trackMonophonic (const std::vector<float>& mono, double srIn, 
         silent = 0;
         const float p = smooth[(size_t) n];
         if (start < 0) { start = n; vals.assign (1, p); change = 0; continue; }
-        std::vector<float> recent (vals.end() - (long) juce::jmin<size_t> (vals.size(), 7), vals.end());
+        std::vector<float> recent (vals.end() - (long) std::min (vals.size(), (size_t) 7), vals.end());
         std::nth_element (recent.begin(), recent.begin() + (long) (recent.size() / 2), recent.end());
         const float ref = recent[recent.size() / 2];
         if (onset[(size_t) n] && n - start >= 3) { close (start, n); start = n; vals.assign (1, p); change = 0; continue; }
@@ -324,7 +324,7 @@ std::vector<Note> trackDrums (const std::vector<float>& mono, double srIn, float
         if (v.size() < 4) return none;
         std::sort (v.begin(), v.end());
         float split = none, bestCost = 1.0e30f;
-        const size_t smallest = juce::jmax<size_t> (2, v.size() / 5); // a group is more than a stray hit or two
+        const size_t smallest = std::max ((size_t) 2, v.size() / 5); // a group is more than a stray hit or two
         for (size_t k = smallest; k + smallest <= v.size(); ++k)
         {
             auto stats = [&] (size_t a, size_t b)
