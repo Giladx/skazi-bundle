@@ -112,6 +112,31 @@ int main()
         check (e.latency() > 0, "reports " + juce::String (e.latency()) + " samples latency");
     }
 
+    // 5. blocks bigger than prepare promised (some hosts do this), odd sizes, and NaN / inf in the input
+    {
+        auto s = flat();
+        for (int b = 0; b < NumBands; ++b) { s.driveDb[(size_t) b] = 30; s.mode[(size_t) b] = Fuzz; }
+        Engine e; e.prepare (48000.0, 64);
+        juce::Random r (5);
+        bool finite = true; float after = 0;
+        for (int blk = 0; blk < 200; ++blk)
+        {
+            const int n = blk % 4 == 0 ? 64 * 9 + 3 : 1 + r.nextInt (64);
+            juce::AudioBuffer<float> buf (2, n);
+            for (int c = 0; c < 2; ++c) for (int i = 0; i < n; ++i) buf.setSample (c, i, r.nextFloat() - 0.5f);
+            if (blk == 50) buf.setSample (0, 0, std::numeric_limits<float>::quiet_NaN());
+            if (blk == 51) buf.setSample (1, 0, std::numeric_limits<float>::infinity());
+            e.process (buf, s);
+            for (int c = 0; c < 2; ++c) for (int i = 0; i < n; ++i)
+            {
+                const float y = buf.getSample (c, i);
+                finite = finite && std::isfinite (y);
+                if (blk > 60) after = juce::jmax (after, std::abs (y));
+            }
+        }
+        check (finite && after > 0.05f, "blocks 9x bigger than prepared, odd sizes, NaN/inf input: finite and still playing");
+    }
+
     std::printf (failures == 0 ? "\nall passed\n" : "\n%d failed\n", failures);
     return failures == 0 ? 0 : 1;
 }

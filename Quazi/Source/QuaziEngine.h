@@ -39,7 +39,7 @@ class Engine
 public:
     void prepare (double sampleRate, int maxBlock);
     int latency() const { return latencySamples; }
-    void process (juce::AudioBuffer<float>& buffer, const Settings& s);
+    void process (juce::AudioBuffer<float>& buffer, const Settings& s); // any block size the host sends
 
     // Read by the editor
     std::atomic<float> uiIn { 0 }, uiOut { 0 };
@@ -47,11 +47,13 @@ public:
     std::atomic<float> uiWidth { 0 };                    // side / mid of the output, smoothed
 
 private:
+    void processChunk (juce::AudioBuffer<float>& buffer, const Settings& s); // at most maxBlock samples
     void updateFilters (const Settings& s, bool snap);
+    void resetState();
 
     double sr = 44100.0;
     std::unique_ptr<juce::dsp::Oversampling<float>> os;
-    int latencySamples = 0;
+    int latencySamples = 0, maxBlockSize = 0;
 
     // Crossover at the oversampled rate: three LR4 splits; the lower bands go through the
     // allpasses of the splits above them so all four line up and sum back flat. MIX blends each band

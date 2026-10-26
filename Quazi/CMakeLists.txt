@@ -72,6 +72,12 @@ if(QUAZI_TESTS)
         target_compile_definitions(QuaziShot PRIVATE SHAK_HAS_LOGO=1)
     endif()
     target_link_libraries(QuaziShot PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
+
+    # Loads the built VST3 like a DAW and stress-tests it
+    juce_add_console_app(QuaziHostTest PRODUCT_NAME "QuaziHostTest")
+    target_sources(QuaziHostTest PRIVATE Tests/HostTest.cpp)
+    target_compile_definitions(QuaziHostTest PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_link_libraries(QuaziHostTest PRIVATE juce::juce_audio_processors juce::juce_recommended_config_flags)
 endif()
 
 target_link_libraries(Quazi

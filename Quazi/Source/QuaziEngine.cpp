@@ -122,6 +122,8 @@ void Engine::prepare (double sampleRate, int maxBlock)
     sr = sampleRate;
     // 4x with linear-phase filters: hard clipping and fuzz stay clean of aliasing, and the delay is a whole number of samples
     os = std::make_unique<juce::dsp::Oversampling<float>> (2, 2, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true);
+    maxBlock = juce::jmax (1, maxBlock);
+    maxBlockSize = maxBlock;
     os->initProcessing ((size_t) maxBlock);
     latencySamples = (int) std::round (os->getLatencyInSamples());
 
@@ -175,10 +177,31 @@ void Engine::updateFilters (const Settings& s, bool snap)
     }
 }
 
+void Engine::resetState()
+{
+    for (auto& f : split) f.reset();
+    for (auto& f : allpass) f.reset();
+    for (size_t c = 0; c < 2; ++c) { eqLow[c].reset(); eqMid[c].reset(); eqHigh[c].reset(); }
+    if (os != nullptr) os->reset();
+    for (int c = 0; c < 2; ++c) dcX[c] = dcY[c] = 0.0f;
+}
+
 void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s)
 {
     const int numCh = juce::jmin (2, buffer.getNumChannels()), n = buffer.getNumSamples();
     if (numCh == 0 || n == 0 || os == nullptr) return;
+
+    // Hosts may send more than they promised in prepare; the oversampler only has room for maxBlock
+    for (int start = 0; start < n; start += maxBlockSize)
+    {
+        juce::AudioBuffer<float> chunk (buffer.getArrayOfWritePointers(), numCh, start, juce::jmin (maxBlockSize, n - start));
+        processChunk (chunk, s);
+    }
+}
+
+void Engine::processChunk (juce::AudioBuffer<float>& buffer, const Settings& s)
+{
+    const int numCh = juce::jmin (2, buffer.getNumChannels()), n = buffer.getNumSamples();
 
     if (! primed)
     {
@@ -204,7 +227,10 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s)
         {
             g += a * (s.inGain - g);
             for (int c = 0; c < numCh; ++c)
-                buffer.getWritePointer (c)[i] *= g;
+            {
+                auto& x = buffer.getWritePointer (c)[i];
+                x = std::isfinite (x) ? x * g : 0.0f; // a NaN from upstream would stick in the filters for good
+            }
         }
         inSm = g;
     }
@@ -268,6 +294,7 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s)
     float* outL = buffer.getWritePointer (0);
     float* outR = buffer.getWritePointer (numCh - 1);
     float pkOut = 0.0f, pkMid = 0.0f, pkSide = 0.0f;
+    bool blewUp = false;
     for (int i = 0; i < n; ++i)
     {
         widthSm += a * (s.width - widthSm);
@@ -289,7 +316,16 @@ void Engine::process (juce::AudioBuffer<float>& buffer, const Settings& s)
             y = skazi::safeClip (d * outSm);
             (c == 0 ? outL : outR)[i] = y;
             pkOut = juce::jmax (pkOut, std::abs (y));
+            blewUp = blewUp || ! std::isfinite (y);
         }
+    }
+
+    // Last line of defence: if anything still blew up, start clean instead of staying broken
+    if (blewUp)
+    {
+        resetState();
+        for (int c = 0; c < numCh; ++c) buffer.clear (c, 0, n);
+        pkOut = 0.0f;
     }
 
     // Meters
