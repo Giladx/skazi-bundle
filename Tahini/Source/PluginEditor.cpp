@@ -64,24 +64,40 @@ void TahiniDisplay::paint (Graphics& g)
         g.strokePath (tail, PathStrokeType (1.2f));
     }
 
-    // echo taps: ping-pong alternates sides, stereo/tape hit both
-    float amp = 1.0f;
-    for (int k = 0; k < 40; ++k)
+    // echo taps: ping-pong alternates sides, DUAL puts the right side at 3/4, MULTI-TAP adds the in-between heads
+    auto bar = [&] (double t, float h, bool up, Colour c)
     {
-        const double t = echoSec * k;
-        if (t > span || amp < 0.01f) break;
-        const float h = (k == 0 ? 0.9f : amp * s.delayMix) * in.getHeight() * 0.42f;
+        if (t > span) return;
         const float x = X (t);
-        const bool up = s.mode != PingPong || k % 2 == 1 || k == 0;
-        const bool down = s.mode != PingPong || k % 2 == 0;
-        const Colour c = k == 0 ? Colours::white : skin::red2;
         g.setColour (c.withAlpha (0.25f));
-        if (up)   g.fillRect (x - 4.0f, mid - h, 8.0f, h);
-        if (down) g.fillRect (x - 4.0f, mid, 8.0f, h);
+        if (up) g.fillRect (x - 4.0f, mid - h, 8.0f, h); else g.fillRect (x - 4.0f, mid, 8.0f, h);
         g.setColour (c);
-        if (up)   g.fillRect (x - 1.5f, mid - h, 3.0f, h);
-        if (down) g.fillRect (x - 1.5f, mid, 3.0f, h);
-        if (k > 0) amp *= s.feedback;
+        if (up) g.fillRect (x - 1.5f, mid - h, 3.0f, h); else g.fillRect (x - 1.5f, mid, 3.0f, h);
+    };
+    const float full = in.getHeight() * 0.42f;
+    bar (0.0, 0.9f * full, true, Colours::white);
+    bar (0.0, 0.9f * full, false, Colours::white);
+    float amp = 1.0f;
+    for (int k = 1; k < 40; ++k)
+    {
+        if (echoSec * (k - 1) > span || amp < 0.01f) break;
+        const float h = amp * s.delayMix * full;
+        const double t = echoSec * k;
+        if (s.mode == PingPong) bar (t, h, k % 2 == 1, skin::red2);
+        else if (s.mode == Dual) { bar (t, h, true, skin::red2); bar (t * 0.75, h, false, skin::red2); }
+        else
+        {
+            bar (t, h, true, skin::red2);
+            bar (t, h, false, skin::red2);
+            if (s.mode == MultiTap)
+            {
+                const Colour sub = skin::red2.withMultipliedBrightness (0.7f);
+                bar (t - echoSec * 0.75, h * 0.3f, true, sub);
+                bar (t - echoSec * 0.5, h * 0.45f, false, sub);
+                bar (t - echoSec * 0.25, h * 0.55f, true, sub);
+            }
+        }
+        amp *= s.feedback;
     }
 
     // scrolling wet level
@@ -100,11 +116,15 @@ void TahiniDisplay::paint (Graphics& g)
     g.drawText ("L", (int) in.getX() + 6, (int) in.getY() + 28, 12, 12, Justification::left);
     g.drawText ("R", (int) in.getX() + 6, (int) in.getBottom() - 18, 12, 12, Justification::left);
 
-    static const char* modes[] = { "PING-PONG", "STEREO", "TAPE" };
+    static const char* modes[] = { "PING-PONG", "STEREO", "TAPE", "DIGITAL", "BBD", "MULTI-TAP", "DUAL" };
+    static const char* drives[] = { "TAPE", "TUBE", "FUZZ", "CRUSH" };
     const String dot = String::fromUTF8 ("  \xc2\xb7  ");
     String info = "DELAY " + skazi::noteLengthNames()[s.time] + " " + modes[s.mode] + dot + "FB " + String (roundToInt (s.feedback * 100)) + "%"
                 + dot + "REVERB " + (s.freeze ? String ("FROZEN") : String (s.decay, 1) + " s") + dot + "DUCK " + String (roundToInt (s.duck * 100)) + "%";
-    if (std::abs (s.pitch) >= 0.5f) info << dot << "PITCH " << (s.pitch > 0 ? "+" : "") << roundToInt (s.pitch) << " st";
+    if (s.drive > 0.005f && (s.driveType != DriveTape || s.drive > 0.3f)) info << dot << drives[jlimit (0, 3, s.driveType)] << " " << roundToInt (s.drive * 100) << "%";
+    const float st = s.pitchSnap ? (float) roundToInt (s.pitch) : s.pitch;
+    if (std::abs (st) >= 0.05f)
+        info << dot << (s.pitchMix < 0.99f ? "SHIMMER " : "PITCH ") << (st > 0 ? "+" : "") << (s.pitchSnap ? String (roundToInt (st)) : String (st, 2)) << " st";
     if (s.reverse > 0.01f) info << dot << "REVERSE";
     if (s.tapeStop > 0.01f) info << dot << "TAPE STOPS";
     g.setFont (skin::font (10.5f));
@@ -115,13 +135,49 @@ void TahiniDisplay::paint (Graphics& g)
     g.drawText (info, (int) in.getX() + 13, (int) in.getY() + 6, (int) tw, 17, Justification::left);
 }
 
+void FilterCurve::paint (Graphics& g)
+{
+    auto b = getLocalBounds().toFloat();
+    skin::drawInsetPanel (g, b, 5.0f);
+    auto in = b.reduced (5.0f);
+    g.setColour (Colour (0xff070707));
+    g.fillRoundedRectangle (in, 3.0f);
+
+    const auto s = proc.settings();
+    constexpr double top = 15.0, bottom = -30.0;
+    auto X = [&] (double hz) { return in.getX() + (float) (std::log (hz / 20.0) / std::log (1000.0)) * in.getWidth(); };
+    auto Y = [&] (double db) { return in.getY() + (float) ((top - jlimit (bottom, top, db)) / (top - bottom)) * in.getHeight(); };
+    g.setColour (Colours::white.withAlpha (0.07f));
+    for (double hz : { 100.0, 1000.0, 10000.0 }) g.drawVerticalLine ((int) X (hz), in.getY(), in.getBottom());
+    g.setColour (Colours::white.withAlpha (0.15f));
+    g.drawHorizontalLine ((int) Y (0.0), in.getX(), in.getRight());
+
+    // repeat 1 bright, repeats 2-4 fading: the filters act again on every trip
+    for (int rep = 4; rep >= 1; --rep)
+    {
+        Path p;
+        for (int x = 0; x <= (int) in.getWidth(); ++x)
+        {
+            const double hz = 20.0 * std::pow (1000.0, x / in.getWidth());
+            const float y = Y (rep * 20.0 * std::log10 (std::max (1.0e-6, echoFilterGain (s, hz))));
+            if (x == 0) p.startNewSubPath (in.getX() + x, y); else p.lineTo (in.getX() + x, y);
+        }
+        g.setColour (skin::red2.withAlpha (rep == 1 ? 1.0f : 0.45f / rep));
+        g.strokePath (p, PathStrokeType (rep == 1 ? 1.6f : 1.0f));
+    }
+    g.setFont (skin::font (8.5f));
+    g.setColour (skin::textDim);
+    g.drawText ("REPEATS 1-4", in.reduced (4.0f, 2.0f), Justification::topRight);
+}
+
 //==============================================================================
 TahiniEditor::TahiniEditor (TahiniProcessor& p)
     : EditorBase (p, "TAH", "INI", String::fromUTF8 ("SPACE DELAY + REVERB  \xc2\xb7  BY ASHER SWISSA"),
-                  String::fromUTF8 ("TAHINI v1.0  \xc2\xb7  VST3 / AU  \xc2\xb7  EFFECT")),
-      tp (p), display (p)
+                  String::fromUTF8 ("TAHINI v1.1  \xc2\xb7  VST3 / AU  \xc2\xb7  EFFECT")),
+      tp (p), display (p), curve (p)
 {
     addAndMakeVisible (display);
+    addAndMakeVisible (curve);
     const auto red = skin::red2, green = Colour (0xff22e3a5);
     modeRow = &addChoiceRow ("dmode");
     timeBox = &addCombo ("dtime");
@@ -131,18 +187,35 @@ TahiniEditor::TahiniEditor (TahiniProcessor& p)
     dry->setTooltip ("Turn off to use TAHINI on a send (wet only)");
 
     fb = &addKnob ("fb", "FEEDBACK", red, "%", 66);
-    locut = &addKnob ("locut", "LOW CUT", red, "Hz", 34);
-    hicut = &addKnob ("hicut", "HIGH CUT", red, "Hz", 34);
 
-    // tape FX strip
+    // echo filters
+    locut = &addKnob ("locut", "LOW CUT", red, "Hz", 40);
+    hpres = &addKnob ("hpres", "RESO", red, "%", 40);
+    hicut = &addKnob ("hicut", "HIGH CUT", red, "Hz", 40);
+    lpres = &addKnob ("lpres", "RESO", red, "%", 40);
+    locut->slider.setTooltip ("Low cut on the echoes, inside the loop: every repeat gets thinner");
+    hicut->slider.setTooltip ("High cut on the echoes, inside the loop: every repeat gets darker");
+
+    // drive
     const auto tapeCol = Colour (0xffffb000);
-    wow = &addKnob ("wow", "WOW", tapeCol, "%", 40);
-    age = &addKnob ("age", "AGE", tapeCol, "%", 40);
-    drive = &addKnob ("ddrive", "DRIVE", tapeCol, "%", 40);
-    pitch = &addKnob ("pitch", "PITCH", Colour (0xffff2d7a), "st", 40);
-    reverse = &addKnob ("reverse", "REVERSE", Colour (0xffc084fc), "%", 40);
-    tstop = &addKnob ("tstop", "TAPE STOP", Colour (0xff38bdf8), "%", 40);
-    pitch->slider.setTooltip ("Every echo is shifted again: + spirals up, - spirals down");
+    distRow = &addChoiceRow ("dist", {}, tapeCol);
+    drive = &addKnob ("ddrive", "DRIVE", tapeCol, "%", 56);
+    drive->slider.setTooltip ("Distortion on the echoes, inside the loop: each pass grinds more. TAPE soft, TUBE warm and lopsided, FUZZ hard, CRUSH bits + sample rate");
+
+    // pitch
+    const auto pitchCol = Colour (0xffff2d7a);
+    pitch = &addKnob ("pitch", "PITCH", pitchCol, "st", 56);
+    pmix = &addKnob ("pmix", "BLEND", pitchCol, "%", 40);
+    snap = &addToggle ("psnap", "SNAP");
+    pitch->slider.setTooltip ("Every echo is shifted again: + spirals up, - spirals down (up to 2 octaves)");
+    pmix->slider.setTooltip ("100% = full spiral. Lower keeps the unshifted echo too: at +12 the octaves stack up (shimmer)");
+    snap->setTooltip ("On: whole semitones. Off: free pitch for detune smears");
+
+    // tape FX
+    wow = &addKnob ("wow", "WOW", tapeCol, "%", 32);
+    age = &addKnob ("age", "AGE", tapeCol, "%", 32);
+    reverse = &addKnob ("reverse", "REVERSE", Colour (0xffc084fc), "%", 32);
+    tstop = &addKnob ("tstop", "TAPE STOP", Colour (0xff38bdf8), "%", 32);
     reverse->slider.setTooltip ("Blend in echoes played backwards");
     tstop->slider.setTooltip ("How often the tape drags to a halt and spins back up");
     age->slider.setTooltip ("Old tape: hiss, dropouts, extra wobble and a darker sound");
@@ -160,30 +233,46 @@ TahiniEditor::TahiniEditor (TahiniProcessor& p)
     duckMeter = &addMeter (p.engine.uiDuck, true);
     duck->slider.setTooltip ("Pushes the echoes and reverb down while you play, so they swell in the gaps");
 
-    setSize (1000, 624);
+    setSize (1000, 720);
 }
 
 void TahiniEditor::layout()
 {
     display.setBounds (20, 68, 960, 196);
 
-    // TAPE FX strip across the whole width
-    panel ({ 20, 272, 960, 96 }, "TAPE FX");
-    int tx = 130;
-    for (auto* k : { wow, age, drive, pitch, reverse, tstop })
+    panel ({ 20, 272, 960, 36 }, "TYPE");
+    modeRow->setBounds (84, 279, 888, 22);
+
+    // echo FX: everything here acts on the repeats, inside the feedback loop
+    const int fy = 316, fh = 150;
+    panel ({ 20, fy, 440, fh }, "ECHO FILTER");
+    curve.setBounds (30, fy + 30, 180, 110);
+    int kx = 216;
+    for (auto* k : { locut, hpres, hicut, lpres })
     {
-        put (*k, tx, 280, 40, 80);
-        tx += 140;
+        put (*k, kx, fy + 46, 40, 60);
+        kx += 60;
     }
 
-    const int y = 378, h = 196;
+    panel ({ 468, fy, 250, fh }, "ECHO DRIVE");
+    distRow->setBounds (478, fy + 32, 230, 22);
+    put (*drive, 548, fy + 60, 56, 90);
+
+    panel ({ 726, fy, 254, fh }, "ECHO PITCH");
+    put (*pitch, 740, fy + 40, 56, 84);
+    put (*pmix, 832, fy + 46, 40, 64);
+    snap->setBounds (906, fy + 70, 58, 22);
+
+    const int y = 474, h = 196;
     panel ({ 20, y, 336, h }, "DELAY");
-    modeRow->setBounds (84, y + 6, 264, 20);
     label ({ 32, y + 40, 60, 12 }, "TIME");
     timeBox->setBounds (32, y + 54, 84, 24);
     put (*fb, 122, y + 40, 66, 90);
-    put (*locut, 232, y + 34, 34, 80);
-    put (*hicut, 232, y + 112, 34, 80);
+    label ({ 236, y + 8, 100, 12 }, "TAPE FX");
+    put (*wow, 228, y + 30, 32, 56);
+    put (*age, 290, y + 30, 32, 56);
+    put (*reverse, 228, y + 110, 32, 56);
+    put (*tstop, 290, y + 110, 32, 56);
 
     panel ({ 364, y, 300, h }, "REVERB");
     freeze->setBounds (432, y + 6, 66, 20);

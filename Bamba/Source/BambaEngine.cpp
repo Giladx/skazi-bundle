@@ -22,14 +22,14 @@ const std::vector<skazi::ParamDef>& paramDefs()
         { "type", "Type", P::Choice, 0, 9, 0, "", 1, 1,
           { "UPLIFTER", "DOWNLIFTER", "NOISE SWEEP", "IMPACT", "SNARE ROLL", "REVERSE CRASH", "LASER", "SIREN", "SUB DROP", "RANDOM FX" } },
         { "trigger", "Trigger", P::Choice, 0, 1, 1, "", 1, 1, { "FULL BARS", "HOLD NOTE" } },
-        { "bars", "Length", P::Choice, 0, 4, 3, "", 1, 1, { "1 BAR", "2 BARS", "4 BARS", "8 BARS", "16 BARS" } },
+        { "bars", "Length", P::Choice, 0, 5, 3, "", 1, 1, { "1 BAR", "2 BARS", "4 BARS", "8 BARS", "16 BARS", "24 BARS" } }, // 24 added last so saved lengths keep their index
         { "curve", "Curve", P::Float, 0, 100, 60, "%", 0.1f },
         { "offset", "Offset (bars)", P::Int, 0, 15, 0 },
         { "noise", "Noise", P::Float, 0, 100, 70, "%", 0.1f },
         { "color", "Noise Color", P::Float, 0, 100, 50, "%", 0.1f },
         { "tone", "Tone", P::Float, 0, 100, 40, "%", 0.1f },
         { "pfrom", "Pitch From", P::Float, -24, 24, -12, "st", 1 },
-        { "pto", "Pitch To", P::Float, -24, 48, 24, "st", 1 },
+        { "pto", "Pitch To", P::Float, -24, 72, 24, "st", 1 }, // up to 6 octaves for long uplifts (was +48)
         { "sweep", "Filter Sweep", P::Float, 0, 100, 75, "%", 0.1f },
         { "reso", "Resonance", P::Float, 0, 100, 40, "%", 0.1f },
         { "roll", "Roll", P::Float, 0, 100, 0, "%", 0.1f },
@@ -38,11 +38,26 @@ const std::vector<skazi::ParamDef>& paramDefs()
         { "reverb", "Reverb", P::Float, 0, 100, 50, "%", 0.1f },
         { "delay", "Delay", P::Float, 0, 100, 30, "%", 0.1f },
         { "gain", "Gain", P::Float, -24, 6, 0, "dB", 0.1f },
+        // Splice sample layer (added in 1.1, after the originals so saved projects keep their mapping)
+        { "synth", "Synth Level", P::Float, 0, 100, 100, "%", 0.1f },
+        { "smix", "Sample Level", P::Float, 0, 100, 80, "%", 0.1f },
+        { "sfit", "Sample Fit", P::Choice, 0, 2, 1, "", 1, 1, { "ORIGINAL", "STRETCH", "VARISPEED" } },
+        { "salign", "Sample Align", P::Choice, 0, 1, 1, "", 1, 1, { "START", "END ON DROP" } },
+        { "stune", "Sample Tune", P::Float, -24, 24, 0, "st", 1 },
+        { "sshape", "Sample Shape", P::Float, 0, 100, 30, "%", 0.1f },
+        { "srev", "Sample Reverse", P::Bool, 0, 1, 0 },
+        // roll quantize and mixer (1.1)
+        { "rrate", "Roll Rate", P::Choice, 0, 8, 0, "", 1, 1, { "FREE", "BUILD", "1/2", "1/4", "1/8", "1/16", "1/32", "1/64", "1/128" } },
+        { "rdecay", "Roll Decay", P::Float, 0, 100, 50, "%", 0.1f },
+        { "synfx", "Synth FX Send", P::Float, 0, 100, 100, "%", 0.1f },
+        { "smpfx", "Sample FX Send", P::Float, 0, 100, 100, "%", 0.1f },
+        { "rshift", "Roll Rate", P::Float, -6, 6, 0, "", 0.01f }, // the automatable RATE knob
+        { "pcurve", "Pitch Curve", P::Float, 0, 100, 50, "%", 0.1f },
     };
     return defs;
 }
 
-int barsFor (int c) { static const int b[] = { 1, 2, 4, 8, 16 }; return b[juce::jlimit (0, 4, c)]; }
+int barsFor (int c) { static const int b[] = { 1, 2, 4, 8, 16, 24 }; return b[juce::jlimit (0, 5, c)]; }
 
 Settings Settings::fromValues (const std::function<float (const char*)>& v)
 {
@@ -54,7 +69,69 @@ Settings Settings::fromValues (const std::function<float (const char*)>& v)
     s.sweep = v ("sweep") * 0.01f; s.reso = v ("reso") * 0.01f; s.roll = v ("roll") * 0.01f;
     s.width = v ("width") * 0.01f; s.phaser = v ("phaser") * 0.01f;
     s.reverb = v ("reverb") * 0.01f; s.delay = v ("delay") * 0.01f; s.gain = juce::Decibels::decibelsToGain (v ("gain"));
+    s.synth = v ("synth") * 0.01f; s.sampleLevel = v ("smix") * 0.01f; s.sampleTune = v ("stune"); s.sampleShape = v ("sshape") * 0.01f;
+    s.sampleFit = (int) v ("sfit"); s.sampleAlign = (int) v ("salign"); s.sampleReverse = v ("srev") > 0.5f;
+    s.rollRate = (int) v ("rrate"); s.rollDecay = v ("rdecay") * 0.01f; s.synthFx = v ("synfx") * 0.01f; s.sampleFx = v ("smpfx") * 0.01f;
+    s.rollShift = v ("rshift");
+    s.pitchCurve = v ("pcurve") * 0.01f;
     return s;
+}
+
+SamplePtr makeSample (const juce::AudioBuffer<float>& audio, double rate)
+{
+    const int n = audio.getNumSamples(), chans = audio.getNumChannels();
+    if (n <= 0 || chans <= 0 || rate <= 0)
+        return nullptr;
+    auto d = std::make_shared<SampleData>();
+    d->rate = rate;
+    d->l.assign (audio.getReadPointer (0), audio.getReadPointer (0) + n);
+    d->r.assign (audio.getReadPointer (chans > 1 ? 1 : 0), audio.getReadPointer (chans > 1 ? 1 : 0) + n);
+
+    // Peak-normalise, so SAMPLE LEVEL means the same for a quiet Splice riser and a loud one.
+    float peak = 0.0f;
+    for (int i = 0; i < n; ++i) peak = juce::jmax (peak, std::abs (d->l[(size_t) i]), std::abs (d->r[(size_t) i]));
+    if (peak > 1.0e-5f)
+        for (int i = 0; i < n; ++i) { d->l[(size_t) i] /= peak; d->r[(size_t) i] /= peak; }
+
+    d->overview.assign (512, 0.0f);
+    for (int i = 0; i < n; ++i)
+    {
+        auto& o = d->overview[(size_t) ((juce::int64) i * 512 / n)];
+        o = juce::jmax (o, std::abs (d->l[(size_t) i]), std::abs (d->r[(size_t) i]));
+    }
+    return d;
+}
+
+double rollHitsPerBeat (int rate, float progress, float shift)
+{
+    if (rate == RollFree) return 0.0;
+    // steps from 1/2 (0) to 1/128 (6); BUILD climbs 1/4 > 1/8 > 1/16 > 1/32 (1 .. 4)
+    const int base = rate == RollBuild ? (progress < 0.25f ? 1 : progress < 0.5f ? 2 : progress < 0.75f ? 3 : 4) : rate - Roll2;
+    return 0.5 * std::exp2 (juce::jlimit (0, 6, base + (int) std::lround (shift))); // 1/2 = half a hit per beat ... 1/128 = 32
+}
+
+juce::String rollRateText (int rate, float shift)
+{
+    static const char* const names[] = { "1/2", "1/4", "1/8", "1/16", "1/32", "1/64", "1/128" };
+    if (rate == RollFree) return "x" + juce::String (std::exp2 (shift), std::exp2 (shift) < 10 ? 2 : 0);
+    const int steps = (int) std::lround (shift);
+    if (rate == RollBuild)
+        return steps == 0 ? juce::String ("BUILD") : names[juce::jlimit (0, 6, 1 + steps)] + juce::String (" >");
+    return names[juce::jlimit (0, 6, rate - Roll2 + steps)];
+}
+
+SamplePlacement placeSample (const Settings& s, double sampleSeconds, double lenSeconds)
+{
+    // STRETCH and VARISPEED fill the effect exactly; ORIGINAL keeps the sample's own speed,
+    // either from the note or timed so it ends right on the drop.
+    if (s.sampleFit != FitOriginal) return { 0.0, lenSeconds };
+    if (s.sampleAlign == AlignStart) return { 0.0, sampleSeconds };
+    return { lenSeconds - sampleSeconds, sampleSeconds };
+}
+
+float bendPitch (float pitch, float pitchCurve)
+{
+    return std::pow (juce::jlimit (0.0f, 1.0f, pitch), std::pow (2.0f, (pitchCurve - 0.5f) * 4.0f));
 }
 
 Shape shapeAt (int type, float p, float curve, float lenSec)
@@ -83,10 +160,12 @@ void Engine::prepare (double sampleRate)
 {
     sr = sampleRate;
     for (auto& d : dl) d.assign ((size_t) (sr * 4.0) + 1, 0.0f);
+    dryL.assign (8192, 0.0f);
+    dryR.assign (8192, 0.0f);
     dlPos = 0;
     reverb.setSampleRate (sr);
     reverb.reset();
-    active = releasing = false;
+    active = releasing = sActive = false;
     heldNote = -1;
 }
 
@@ -97,6 +176,7 @@ void Engine::start (int note, const Settings& s, juce::int64 seed)
     type = s.type;
     noteSemis = (float) (note - 60);
     ph[0] = ph[1] = zapPh = rollPh = sirenPh = subPh = 0;
+    evT = 0;
     if (type == RandomFx)
     {
         juce::Random r (seed);
@@ -109,6 +189,111 @@ void Engine::start (int note, const Settings& s, juce::int64 seed)
     uiType.store (type);
 }
 
+void Engine::startSample (const Settings& s)
+{
+    voiceSmp = smp;
+    sActive = voiceSmp != nullptr && voiceSmp->frames() > 1 && s.sampleLevel > 0.0f;
+    if (! sActive) return;
+    sT = 0; sOffset = 0; sDelay = 0;
+    sFit = s.sampleFit;
+    for (auto& gr : grains) gr.age = -1;
+    for (int c = 0; c < 2; ++c) sic1[c] = sic2[c] = 0;
+
+    const double frames = voiceSmp->frames();
+    const double pitch = std::exp2 ((noteSemis + s.sampleTune) / 12.0);
+    if (sFit == FitVarispeed)
+    {
+        sStep = frames / len; // the whole file across the effect, like a tape sped up or slowed down
+        return;
+    }
+    sStep = voiceSmp->rate / sr * pitch;
+    if (sFit == FitStretch)
+        return;
+    const auto place = placeSample (s, frames / sStep / sr, len / sr);
+    sDelay = place.start * sr;
+    if (sDelay < 0) { sOffset = -sDelay * sStep; sDelay = 0; } // longer than the effect: start partway so it still ends on the drop
+}
+
+void Engine::samplePlay (const Settings& s, float& l, float& r)
+{
+    const auto& d = *voiceSmp;
+    const int frames = d.frames();
+    auto read = [&] (double pos, float& a, float& b)
+    {
+        if (pos < 0 || pos >= frames - 1) { a = b = 0; return; }
+        if (s.sampleReverse) pos = frames - 1 - pos;
+        const int i = (int) pos;
+        const float f = (float) (pos - i);
+        const int j = juce::jmin (frames - 1, i + 1);
+        a = d.l[(size_t) i] + (d.l[(size_t) j] - d.l[(size_t) i]) * f;
+        b = d.r[(size_t) i] + (d.r[(size_t) j] - d.r[(size_t) i]) * f;
+    };
+
+    float a = 0, b = 0;
+    if (sFit == FitStretch)
+    {
+        // Overlapping Hann grains that read at the sample's own pitch while their start points
+        // walk through the file at the speed that makes it last exactly the effect's length.
+        const int grain = juce::jmax (64, (int) (0.09 * sr)), hop = grain / 2;
+        if (((juce::int64) sT) % hop == 0)
+        {
+            auto& gr = grains[0].age < 0 || (grains[1].age >= 0 && grains[0].age >= grains[1].age) ? grains[0] : grains[1];
+            gr.pos = sT / len * frames;
+            gr.age = 0;
+        }
+        for (auto& gr : grains)
+            if (gr.age >= 0)
+            {
+                float ga, gb;
+                read (gr.pos + gr.age * sStep, ga, gb);
+                const float w = 0.5f - 0.5f * (float) std::cos (twoPi * gr.age / grain);
+                a += ga * w; b += gb * w;
+                if (++gr.age >= grain) gr.age = -1;
+            }
+        if (sT >= len) sActive = false;
+    }
+    else if (sFit == FitVarispeed)
+    {
+        read (sT * sStep, a, b);
+        if (sT >= len) sActive = false;
+    }
+    else if (sT >= sDelay)
+    {
+        const double pos = sOffset + (sT - sDelay) * sStep;
+        read (pos, a, b);
+        if (pos >= frames - 1) sActive = false;
+    }
+    sT += 1.0;
+
+    // SHAPE: how much of BAMBA's own level and filter movement the sample follows
+    const float shape = s.sampleShape;
+    float amp = 1.0f;
+    if (shape > 0.001f)
+    {
+        const float sweep = s.type == RandomFx ? rSweep : s.sweep;
+        const auto sh = shapeAt (type, (float) juce::jmin (1.0, sT / len), s.curve, (float) (len / sr));
+        amp = 1.0f - shape + shape * sh.amp;
+        const float open = 1.0f - shape + shape * (sh.filter * sweep + (1.0f - sweep));
+        const float cut = juce::jlimit (30.0f, (float) (0.45 * sr), 80.0f * std::exp2 (open * 7.9f));
+        const float g = (float) std::tan (juce::MathConstants<double>::pi * cut / sr);
+        const float k = 1.0f / (0.6f + s.reso * s.reso * 4.0f);
+        const float a1 = 1.0f / (1.0f + g * (g + k)), a2 = g * a1, a3 = g * a2;
+        float* x[2] = { &a, &b };
+        for (int c = 0; c < 2; ++c)
+        {
+            const float v3 = *x[c] - sic2[c];
+            const float v1 = a1 * sic1[c] + a2 * v3;
+            const float v2 = sic2[c] + a2 * sic1[c] + a3 * v3;
+            sic1[c] = 2.0f * v1 - sic1[c];
+            sic2[c] = 2.0f * v2 - sic2[c];
+            *x[c] = v2;
+        }
+    }
+    const float level = s.sampleLevel * 0.6f * amp;
+    l = a * level;
+    r = b * level;
+}
+
 void Engine::sample (const Settings& s, float& l, float& r)
 {
     const bool rnd = s.type == RandomFx;
@@ -116,7 +301,8 @@ void Engine::sample (const Settings& s, float& l, float& r)
     const float sweep = rnd ? rSweep : s.sweep, rollAmt = rnd ? rRoll : s.roll;
     const float p = (float) juce::jmin (0.99999, t / len);
     const float lenSec = (float) (len / sr), tSec = (float) (t / sr);
-    const auto sh = shapeAt (type, p, s.curve, lenSec);
+    auto sh = shapeAt (type, p, s.curve, lenSec);
+    sh.pitch = bendPitch (sh.pitch, s.pitchCurve);
     const float e = std::pow (2.0f, (s.curve - 0.5f) * 4.0f);
     const float rise = std::pow (p, e);
     const double noteMul = std::exp2 (noteSemis / 12.0);
@@ -178,14 +364,7 @@ void Engine::sample (const Settings& s, float& l, float& r)
     if (type == Impact) noiseAmt *= std::exp (-tSec / 0.04f) * 0.9f;
     if (type == SubDrop || type == Impact) toneAmt = juce::jmax (toneAmt, 0.8f) * 0.55f;
 
-    // roll: a gate whose hits speed up from 1/8 to 1/32 as the effect builds
-    float gate = 1.0f;
-    const float rollUse = type == SnareRoll ? 1.0f : rollAmt;
-    if (rollUse > 0.0f)
-    {
-        rollPh += 2.0 * std::pow (4.0, (double) rise) * bpm / 60.0 / sr;
-        gate = 1.0f - rollUse * (1.0f - (float) std::exp (-frac (rollPh) * 6.0));
-    }
+    juce::ignoreUnused (rollAmt, rise);
 
     // filter sweep (high-pass for the crash), phaser, amp
     const float cut = juce::jlimit (30.0f, (float) (0.45 * sr), 80.0f * std::exp2 ((sh.filter * sweep + (1.0f - sweep)) * 7.8f));
@@ -219,7 +398,7 @@ void Engine::sample (const Settings& s, float& l, float& r)
             }
             y = (y + z * s.phaser) / (1.0f + s.phaser * 0.5f);
         }
-        out[c] = y * sh.amp * gate * 0.5f;
+        out[c] = y * sh.amp * 0.5f;
     }
     l = out[0];
     r = out[1];
@@ -228,6 +407,7 @@ void Engine::sample (const Settings& s, float& l, float& r)
 void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi, const Settings& s, juce::AudioPlayHead* playHead)
 {
     const int n = out.getNumSamples();
+    if ((int) dryL.size() < n) { dryL.assign ((size_t) n, 0.0f); dryR.assign ((size_t) n, 0.0f); } // a host block bigger than promised
     const auto ht = skazi::hostTime (playHead);
     bpm = ht.bpm;
     if (ht.playing) ppq = ht.ppq;
@@ -250,6 +430,7 @@ void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi
             {
                 start (m.getNoteNumber(), s, (juce::int64) rng.nextInt());
                 len = s.bars * barSamples;
+                startSample (s);
                 heldNote = m.getNoteNumber();
                 releasing = false;
                 fade = 1.0f;
@@ -257,26 +438,68 @@ void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi
             else if ((m.isNoteOff() && m.getNoteNumber() == heldNote) || m.isAllNotesOff() || m.isAllSoundOff())
             {
                 heldNote = -1;
-                if (active && s.trigger == Midi) releasing = true;
+                if ((active || sActive) && s.trigger == Midi) releasing = true;
             }
         }
 
-        float l = 0.0f, r = 0.0f;
-        if (active)
+        // MIXER: synth and sample levels, and how much of each goes on to the delay and reverb
+        float l = 0.0f, r = 0.0f, dl0 = 0.0f, dr0 = 0.0f;
+        if (active || sActive)
         {
-            sample (s, l, r);
-            if (releasing)
+            float yl = 0.0f, yr = 0.0f, sl = 0.0f, sr2 = 0.0f;
+            if (active)
             {
-                fade -= fadeStep;
-                if (fade <= 0.0f) { fade = 0.0f; active = releasing = false; }
+                sample (s, yl, yr);
+                yl *= s.synth;
+                yr *= s.synth;
+                t += 1.0;
+                if (t >= len) active = false;
             }
+            if (sActive)
+                samplePlay (s, sl, sr2);
+
+            // ROLL: a gate over synth and sample, FREE (speeds up 1/8 -> 1/32) or quantized to the beat
+            const float rollUse = type == SnareRoll ? 1.0f : (s.type == RandomFx ? rRoll : s.roll);
+            float gate = 1.0f;
+            if (rollUse > 0.0f)
+            {
+                const float p = (float) juce::jmin (1.0, evT / len);
+                const float rise = std::pow (p, std::pow (2.0f, (s.curve - 0.5f) * 4.0f));
+                double phase;
+                if (s.rollRate == RollFree)
+                {
+                    rollPh += juce::jmin (64.0, 2.0 * std::pow (4.0, (double) rise) * std::exp2 ((double) s.rollShift)) * bpm / 60.0 / sr;
+                    phase = frac (rollPh);
+                }
+                else
+                {
+                    const double beat = ht.playing ? ppq + i * bpm / 60.0 / sr : evT * bpm / 60.0 / sr;
+                    phase = frac (beat * rollHitsPerBeat (s.rollRate, p, s.rollShift));
+                }
+                const double k = 6.0 * std::pow (5.0, (s.rollDecay - 0.5) * 2.0);
+                gate = 1.0f - rollUse * (1.0f - (float) std::exp (-phase * k));
+            }
+            evT += 1.0;
+
+            l = (yl * s.synthFx + sl * s.sampleFx) * gate;
+            r = (yr * s.synthFx + sr2 * s.sampleFx) * gate;
+            dl0 = (yl * (1.0f - s.synthFx) + sl * (1.0f - s.sampleFx)) * gate;
+            dr0 = (yr * (1.0f - s.synthFx) + sr2 * (1.0f - s.sampleFx)) * gate;
+        }
+        if (releasing)
+        {
+            fade -= fadeStep;
+            if (fade <= 0.0f) { fade = 0.0f; active = sActive = false; }
             l *= fade;
             r *= fade;
-            t += 1.0;
-            if (t >= len) { active = releasing = false; }
+            dl0 *= fade;
+            dr0 *= fade;
         }
+        if (! active && ! sActive) releasing = false;
         L[i] = l;
         if (R != L) R[i] = r;
+        dryL[(size_t) i] = dl0;
+        dryR[(size_t) i] = R != L ? dr0 : 0.5f * (dl0 + dr0);
     }
 
     // 3/16 ping-pong delay (always running so its echoes ring out after the effect ends)
@@ -302,6 +525,13 @@ void Engine::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi
     reverb.setParameters (rp);
     if (R != L) reverb.processStereo (L, R, n);
     else        reverb.processMono (L, n);
+
+    // the un-sent part joins after the FX, at the reverb's dry level so 100% sends sound like 1.0
+    for (int i = 0; i < n; ++i)
+    {
+        L[i] += dryL[(size_t) i] * rp.dryLevel;
+        if (R != L) R[i] += dryR[(size_t) i] * rp.dryLevel;
+    }
 
     const float decay = (float) std::exp (-(double) n / (0.2 * sr));
     for (int i = 0; i < n; ++i)

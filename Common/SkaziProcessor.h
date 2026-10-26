@@ -15,6 +15,12 @@ public:
     virtual const std::vector<Preset>& presetList() const = 0;
     virtual Preset randomPreset (juce::Random& rng) const = 0;
 
+    // Parameters that presets, RANDOM and the like must leave exactly as the user set them
+    virtual bool keepOnPresetChange (const juce::String& /*paramId*/) const { return false; }
+
+    // Called on the message thread after loadPreset picks a preset (its values arrive with the fade)
+    virtual void presetLoaded (const Preset&) {}
+
     float v (const char* id) const { return apvts.getRawParameterValue (id)->load(); }
 
     void loadPreset (int index)
@@ -26,6 +32,7 @@ public:
         presetLabel = list[(size_t) index].category + juce::String::fromUTF8 (" \xc2\xb7 ") + list[(size_t) index].name;
         const auto values = list[(size_t) index].values;
         fader.change ([this, values] { applyValues (values); });
+        presetLoaded (list[(size_t) index]);
     }
 
     void randomizeAll()
@@ -86,13 +93,15 @@ public:
 
 protected:
     // Every parameter gets a value: the preset's, or its default when the preset leaves it out,
-    // so nothing from the previous sound leaks into the new one.
+    // so nothing from the previous sound leaks into the new one (except the ones the plugin keeps).
     void applyValues (const std::map<juce::String, float>& values)
     {
         undo.beginNewTransaction();
         for (auto* p : getParameters())
             if (auto* prm = dynamic_cast<juce::RangedAudioParameter*> (p))
             {
+                if (keepOnPresetChange (prm->getParameterID()))
+                    continue;
                 const auto it = values.find (prm->getParameterID());
                 const float norm = it != values.end() ? prm->convertTo0to1 (it->second) : prm->getDefaultValue();
                 if (std::abs (prm->getValue() - norm) > 1.0e-7f)

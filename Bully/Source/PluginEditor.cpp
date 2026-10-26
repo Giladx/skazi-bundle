@@ -507,6 +507,12 @@ namespace
         {
             case FLp12: return (float) (1.0 / den (k));
             case FLp24: case FDirty: return (float) (1.0 / (den (1.85) * den (k)));
+            case FSharp24: // 4-pole ladder with feedback k: comp / |(1 + jw)^4 + k|
+            {
+                const double kk = 4.2 * res;
+                const std::complex<double> p = std::pow (std::complex<double> (1.0, w), 4) + kk;
+                return (float) (std::pow (1.0 + kk, 0.75) / std::abs (p));
+            }
             case FHp12: return (float) (w * w / den (k));
             case FHp24: return (float) (w * w * w * w / (den (1.85) * den (k)));
             case FBp12: return (float) ((0.4 + 0.6 * k) * w / den (k));

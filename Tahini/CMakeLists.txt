@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary (Apple Silicon + Intel)")
 
-project(TAHINI VERSION 1.0.0)
+project(TAHINI VERSION 1.1.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -62,6 +62,16 @@ if(TAHINI_TESTS)
     target_sources(TahiniTest PRIVATE Tests/TahiniTest.cpp Source/TahiniEngine.cpp Source/Presets.cpp)
     target_compile_definitions(TahiniTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
     target_link_libraries(TahiniTest PRIVATE juce::juce_audio_processors juce::juce_recommended_config_flags)
+
+    # Editor snapshot for checking the skin
+    juce_add_console_app(TahiniShot PRODUCT_NAME "TahiniShot")
+    target_sources(TahiniShot PRIVATE Tests/TahiniShot.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/TahiniEngine.cpp Source/Presets.cpp)
+    target_compile_definitions(TahiniShot PRIVATE JucePlugin_Name="TAHINI" JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_MODAL_LOOPS_PERMITTED=1)
+    if(TARGET TahiniData)
+        target_link_libraries(TahiniShot PRIVATE TahiniData)
+        target_compile_definitions(TahiniShot PRIVATE SHAK_HAS_LOGO=1)
+    endif()
+    target_link_libraries(TahiniShot PRIVATE juce::juce_audio_utils juce::juce_recommended_config_flags)
 endif()
 
 target_link_libraries(Tahini

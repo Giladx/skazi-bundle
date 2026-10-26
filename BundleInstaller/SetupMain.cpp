@@ -41,6 +41,10 @@ namespace
         if (name == "ZHUG")           return "Saturator + widener";
         if (name == "BULLY")          return "Wavetable synth: warps, mod matrix, FX";
         if (name == "KICKASS")        return "Kick drum synth + Splice kick browser";
+        if (name == "SALAT")          return "Glitch multi-FX + MAKE A SALAT randomizer";
+        if (name == "SKAZI 303")      return "TBON 303 acid bass line synth + sequencer";
+        if (name == "MIDI GOD")       return "MIDI pattern generator + audio to MIDI";
+        if (name == "KUBE")           return "Psytrance wavetable synth";
         return "Plugin";
     }
 

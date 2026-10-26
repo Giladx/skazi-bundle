@@ -45,7 +45,12 @@ namespace
             const int n = std::min (block, total - pos);
             buf.setSize (2, n, false, false, true);
             midi.clear();
-            if (! seq)
+            if (seq)
+            {
+                // the pattern only plays while a key is held: hold C3 (no transpose) for the whole render
+                if (pos == 0) addNote (0, 60, true);
+            }
+            else
             {
                 const double t = pos / sr, t1 = (pos + n) / sr;
                 auto at = [&] (double when) { return when >= t && when < t1 ? (int) ((when - t) * sr) : -1; };
@@ -253,6 +258,58 @@ int main (int argc, char** argv)
         return 0;
     }
 
+    if (mode == "--demo")
+    {
+        // RenderTest <dir> --demo <preset number> ...: 6 s WAV of each preset, played like --calibrate
+        for (int a = 3; a < argc; ++a)
+        {
+            const int i = juce::jlimit (1, Presets::count(), juce::String (argv[a]).getIntValue()) - 1;
+            juce::AudioBuffer<float> out;
+            auto r = play (i, &out, 6.0);
+            std::printf ("%4d %-13s %-24s peak=%.3f rms=%.3f\n", i + 1, Presets::category (i).toRawUTF8(), Presets::name (i).toRawUTF8(), r.peak, r.rms);
+            writeWav (outDir.getChildFile ("demo_" + juce::String (i + 1).paddedLeft ('0', 4) + ".wav"), out);
+        }
+        return 0;
+    }
+
+    if (mode == "--snap")
+    {
+        // RenderTest <dir> --snap <preset number> [skin]: every tab of one preset, one skin (default Hyper)
+        AcidanceProcessor proc;
+        const int index = juce::jlimit (1, Presets::count(), juce::String (argc > 3 ? argv[3] : "1").getIntValue()) - 1;
+        proc.setCurrentProgram (index);
+        proc.fader.flush(); // no message loop here: apply the preset now
+        proc.currentStep = 4;
+        proc.uiScale = 1.f;
+        proc.skin = argc > 4 ? juce::String (argv[4]).getIntValue() : 5;
+        std::unique_ptr<AcidanceEditor> ed (dynamic_cast<AcidanceEditor*> (proc.createEditor()));
+        std::function<void (juce::Component*, juce::Array<juce::TextButton*>&)> find;
+        find = [&find] (juce::Component* c, juce::Array<juce::TextButton*>& out)
+        {
+            for (auto* ch : c->getChildren())
+            {
+                if (auto* b = dynamic_cast<juce::TextButton*> (ch))
+                    if (b->getRadioGroupId() == 1001) out.add (b);
+                find (ch, out);
+            }
+        };
+        juce::Array<juce::TextButton*> tabs;
+        find (ed.get(), tabs);
+        for (auto* t : tabs)
+        {
+            t->setToggleState (true, juce::dontSendNotification);
+            t->onClick();
+            auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+            auto f = outDir.getChildFile ("snap_" + juce::String (index + 1) + "_"
+                                          + t->getButtonText().toLowerCase().removeCharacters (" /") + ".png");
+            f.deleteFile();
+            juce::FileOutputStream fos (f);
+            juce::PNGImageFormat().writeImageToStream (img, fos);
+        }
+        std::printf ("%s / %s\n", proc.currentPresetFolder.toRawUTF8(), proc.currentPresetName.toRawUTF8());
+        return 0;
+    }
+
     // Library metadata as JSON
     outDir.getChildFile ("factory_presets.json").replaceWithText (juce::JSON::toString (Presets::toJson()));
 
@@ -311,8 +368,8 @@ int main (int argc, char** argv)
         juce::FileOutputStream fos (f);
         juce::PNGImageFormat().writeImageToStream (img, fos);
     };
-    const char* skinNames[] = { "neon", "vintage", "chrome", "robot", "hyper" };
-    for (int skin : { 4, 3, 2, 1, 0 })
+    const char* skinNames[] = { "neon", "vintage", "chrome", "robot", "hyper", "bully" };
+    for (int skin : { 5, 4, 3, 2, 1, 0 })
     {
         proc.skin = skin;
         std::unique_ptr<AcidanceEditor> ed (dynamic_cast<AcidanceEditor*> (proc.createEditor()));

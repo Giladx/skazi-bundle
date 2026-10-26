@@ -74,6 +74,7 @@ struct FilterSetup
     float g[2] {}, k = 1.0f, k2 = 1.0f, drive = 0.0f, mix = 1.0f, var = 0.0f, res = 0.0f, ladG[2] {};
     float combDelay[2] {}, fbk = 0.0f, ringInc[2] {}, apA[2][4] {};
     float formG[2][3] {}, formK = 0.3f;
+    float sharpG[2] {}, sharpK = 0.0f, sharpComp = 1.0f; // SHARP 24 (zero-delay-feedback ladder)
 };
 
 struct Voice
