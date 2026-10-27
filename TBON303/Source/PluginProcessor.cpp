@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "../../Common/UpdateNotice.h"
 #include "PluginEditor.h"
 
 const juce::StringArray Skazi303Processor::distTypes { "Tube", "Fuzz", "Crush", "Fold", "Overdrive", "Distortion",
@@ -788,7 +789,7 @@ juce::String Skazi303Processor::getPresetDisplayName() const
 
 juce::AudioProcessorEditor* Skazi303Processor::createEditor()
 {
-    return new Skazi303Editor (*this);
+    return skazi::withUpdateNotice (new Skazi303Editor (*this));
 }
 
 void Skazi303Processor::getStateInformation (juce::MemoryBlock& dest)

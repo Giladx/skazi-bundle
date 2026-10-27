@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "../../Common/UpdateNotice.h"
 #include "PluginEditor.h"
 #include "Presets.h"
 
@@ -395,7 +396,7 @@ void MidiGodProcessor::setStateInformation (const void* data, int sizeInBytes)
     regenerate();
 }
 
-juce::AudioProcessorEditor* MidiGodProcessor::createEditor() { return new MidiGodEditor (*this); }
+juce::AudioProcessorEditor* MidiGodProcessor::createEditor() { return skazi::withUpdateNotice (new MidiGodEditor (*this)); }
 
 const std::vector<skazi::Preset>& MidiGodProcessor::presetList() const { return presets(); }
 skazi::Preset MidiGodProcessor::randomPreset (juce::Random& rng) const { return midigod::randomPreset (rng); }
