@@ -233,7 +233,7 @@ void ImagerView::paint (juce::Graphics& g)
         g.setColour (Theme::edge.withAlpha (0.6f));
         g.drawVerticalLine ((int) x, plot.getY(), plot.getBottom());
         g.setColour (Theme::dim);
-        g.drawText (f >= 1000.0f ? juce::String (f / 1000.0f, 0) + "k" : juce::String ((int) f),
+        g.drawText (f >= 1000.0f ? juce::String (juce::roundToInt (f / 1000.0f)) + "k" : juce::String ((int) f),
                     juce::Rectangle<float> (x - 20.0f, plot.getBottom() + 2.0f, 40.0f, 12.0f), juce::Justification::centred);
     }
     for (float db = -72.0f; db <= -12.0f; db += 12.0f)
@@ -631,7 +631,7 @@ void ScopeView::paint (juce::Graphics& g)
     const float delta = std::abs (monoDelta) < 0.05f ? 0.0f : monoDelta;
     readout ("MONO SUM", hasSignal ? (delta >= 0.0f ? "+" : "") + juce::String (delta, 1) + " dB" : "--",
              std::abs (monoDelta) < 0.5f ? Theme::lime : Theme::amber);
-    readout ("BALANCE", ! hasSignal ? "--" : std::abs (balance) < 0.01f ? "C" : (balance < 0 ? "L " : "R ") + juce::String (std::abs (balance) * 100.0f, 0),
+    readout ("BALANCE", ! hasSignal ? "--" : std::abs (balance) < 0.01f ? "C" : (balance < 0 ? "L " : "R ") + juce::String (juce::roundToInt (std::abs (balance) * 100.0f)),
              Theme::cyan);
 }
 
