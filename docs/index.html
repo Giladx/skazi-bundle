@@ -25,6 +25,14 @@
   .wrap{width:min(1180px,100% - 32px);margin:0 auto}
 
   /* nav */
+  .update-bar{position:relative;z-index:60;background:linear-gradient(90deg,#7a0300,var(--red) 35%,#ff2bd6);color:#fff;font-size:14px;font-weight:700;letter-spacing:.3px}
+  .update-bar .wrap{display:flex;align-items:center;justify-content:center;gap:12px;padding-top:10px;padding-bottom:10px;padding-right:44px;flex-wrap:wrap;text-align:center}
+  .update-bar .pill{font-size:11px;font-weight:900;letter-spacing:2px;background:#fff;color:var(--red);border-radius:999px;padding:3px 10px;animation:pulse 1.6s ease-in-out infinite}
+  .update-bar a.go{color:#fff;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+  .update-bar .x{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:0;color:#fff;font-size:22px;line-height:1;cursor:pointer;opacity:.8;padding:4px 8px}
+  .update-bar .x:hover{opacity:1}
+  @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(255,255,255,.25)}}
+  @media (prefers-reduced-motion:reduce){.update-bar .pill{animation:none}}
   nav{position:sticky;top:0;z-index:50;background:rgba(7,7,10,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
   nav .wrap{display:flex;align-items:center;gap:28px;height:64px}
   .logo{display:flex;align-items:center;gap:10px;font-family:"Bebas Neue",Impact,sans-serif;font-size:30px;letter-spacing:2px}
@@ -154,6 +162,26 @@
 </style>
 </head>
 <body>
+<div class="update-bar" id="update-bar">
+  <div class="wrap">
+    <span class="pill">NEW VERSION</span>
+    <span>SKAZI Bundle <b id="update-version">update</b> is out: new VST <b>SKWIDE</b> stereo imager + <b>MIDI GOD 1.1</b> with ROLL BASS</span>
+    <a class="go" href="#download">Download free</a>
+  </div>
+  <button class="x" aria-label="Hide" onclick="hideUpdateBar()">&times;</button>
+</div>
+<script>
+  // the newest release number from GitHub; hidden for this release once closed
+  (function () {
+    var bar = document.getElementById('update-bar'), tag = 'update';
+    function hidden (t) { try { return localStorage.getItem('skazi-update-bar') === t; } catch (e) { return false; } }
+    window.hideUpdateBar = function () { bar.style.display = 'none'; try { localStorage.setItem('skazi-update-bar', tag); } catch (e) {} };
+    fetch('https://api.github.com/repos/slazoasher/skazi-bundle/releases/latest').then(function (r) { return r.json(); }).then(function (j) {
+      if (j && j.tag_name) { tag = j.tag_name; document.getElementById('update-version').textContent = j.tag_name; }
+      if (hidden (tag)) bar.style.display = 'none';
+    }).catch(function () {});
+  })();
+</script>
 
 <nav>
   <div class="wrap">
@@ -166,7 +194,7 @@
 <header class="hero" id="top">
   <div class="wrap">
     <div>
-      <span class="kicker"><i></i> 100% FREE DOWNLOAD · NEW: 200 WILD KUBE SOUNDS</span>
+      <span class="kicker"><i></i> 100% FREE DOWNLOAD · NEW: SKWIDE + MIDI GOD 1.1</span>
       <h1>SKAZI<br><span>BUNDLE</span></h1>
       <p class="lead">18 synths and effects in one installer: three wavetable synths, a kick synth, two acid bass line synths, a morphing filter, a phase-safe stereo imager, a MIDI pattern generator, bass machine, risers, glitch chops and multi-FX, 4-band fuzz, sidechain, tape delay and saturation. Built for psytrance, techno, house and everything in between.</p>
       <div class="ctas" id="download">
@@ -178,7 +206,7 @@
           <span class="txt">FREE Download for Mac<small>AU + VST3 + apps · Apple Silicon & Intel</small></span></a>
       </div>
       <p class="meta"><b>Free</b> · Windows 10/11 & macOS 10.13+ · Works in Cubase, Ableton, FL Studio, Logic, Bitwig, Studio One, Reaper</p>
-      <p class="meta"><b style="color:#ff2bd6">Updated 29 Oct 2026:</b> new plugin <b>SKWIDE</b>, a phase-safe stereo imager: widen anything up to 200% and it still sounds full in mono, with a phase wheel, depth, low-end bypass and a Haas SUPER WIDE section. Yesterday: <b>SKACID</b> and <b>SKILTER</b>, TBON 303 ADSR and wheels, and every plugin now tells you when a new update is out. New this month: SKWIDE, SKACID, SKILTER, KUBE, QUAZI and MIDI GOD. Already installed? Just download and install again: your projects keep their sounds.</p>
+      <p class="meta"><b style="color:#ff2bd6">Updated 29 Oct 2026:</b> new plugin <b>SKWIDE</b>, a phase-safe stereo imager: widen anything up to 200% and it still sounds full in mono, with a phase wheel, depth, low-end bypass and a Haas SUPER WIDE section. <b>MIDI GOD 1.1</b> adds ROLL BASS: rolling basslines with glide, pitch dips, octave jumps, groove and MUTATE, plus better audio to MIDI and a bigger window. Yesterday: <b>SKACID</b> and <b>SKILTER</b>, TBON 303 ADSR and wheels, and every plugin now tells you when a new update is out. New this month: SKWIDE, SKACID, SKILTER, KUBE, QUAZI and MIDI GOD. Already installed? Just download and install again: your projects keep their sounds.</p>
     </div>
     <div class="shot">
       <img src="img/bully.png?v=3" alt="BULLY wavetable synth" class="zoom">
@@ -190,7 +218,7 @@
 <div class="stats">
   <div class="wrap">
     <div class="stat"><b>18</b><span>PLUGINS</span></div>
-    <div class="stat"><b>8,717</b><span>PRESETS</span></div>
+    <div class="stat"><b>8,737</b><span>PRESETS</span></div>
     <div class="stat"><b>VST3 · AU</b><span>FORMATS</span></div>
     <div class="stat"><b style="color:var(--red2)">FREE</b><span>DOWNLOAD · WIN &amp; MAC</span></div>
   </div>
@@ -198,9 +226,10 @@
 
 <section class="news" id="new">
   <div class="wrap">
-    <div class="head"><h2>NEW IN THIS UPDATE</h2><p>A brand-new stereo imager, SKWIDE, on top of yesterday's SKACID and SKILTER, plus fixes, 200 new sounds and the rest of this month's new plugins. Already installed? Download and install again: your projects keep their sounds.</p></div>
+    <div class="head"><h2>NEW IN THIS UPDATE</h2><p>A brand-new stereo imager, SKWIDE, and MIDI GOD 1.1 with ROLL BASS, on top of yesterday's SKACID and SKILTER, plus fixes, 200 new sounds and the rest of this month's new plugins. Already installed? Download and install again: your projects keep their sounds.</p></div>
     <div class="grid">
       <div class="item new"><span class="tagline">New VST</span><h4>SKWIDE</h4><p>Phase-safe stereo imager: width up to 200% that never cancels in mono, allpass spread for mono sounds, phase wheel with drift, near/far depth, mono bass, Haas SUPER WIDE, imager and scope. 70 presets.</p></div>
+      <div class="item new"><span class="tagline">Big update</span><h4>MIDI GOD 1.1</h4><p>ROLL BASS: rolling psy and techno basslines around the kick, with 6 styles, glide, pitch dips, octave jumps, groove, fills and EVOLVE. MUTATE changes the line without losing it. Audio to MIDI now follows slides. 20 new presets, bigger window.</p></div>
       <div class="item new"><span class="tagline">New VST</span><h4>SKACID</h4><p>Acid bassline synth, Special Shigaon Edition: 303-style voice, an evolving 16-step sequencer with MUTATE, arpeggiator and MIDI modes, 5 distortions and OTT. 129 presets.</p></div>
       <div class="item new"><span class="tagline">New VST</span><h4>SKILTER</h4><p>Morphing filter: LP to BP to HP to notch, resonance that sings, LFO, envelope follower and a step sequencer, drive, RANDOM. 150 presets.</p></div>
       <div class="item new"><span class="tagline">New VST</span><h4>KUBE</h4><p>Psytrance wavetable synth: 24 KUBE-only tables (growl, yoy and more), drag in your own Serum .wav wavetables, 2 warp slots per oscillator, 16-voice unison, 306 presets.</p></div>
@@ -287,8 +316,8 @@
 
       <article class="card"><div class="pic"><span class="badge inst">New · MIDI</span><img src="img/midigod.png?v=1" alt="MIDI GOD" class="zoom" loading="lazy"></div>
         <div class="body"><h3>MIDI <em>GOD</em></h3><div class="sub">MIDI pattern generator + audio to MIDI</div>
-          <p>Writes basslines, acid lines, leads, plucks, arps, chords, pads and drums in 10 genres from full-on psy to hard techno, in your key and groove. GOD MODE rolls a new variation, then drag the loop straight onto a track in your DAW. Drop in audio and it turns melody, bass, drums or chords into MIDI.</p>
-          <div class="chips"><span class="chip hot">106 presets</span><span class="chip">10 genres x 9 roles</span><span class="chip">Drag MIDI to the DAW</span><span class="chip">Audio to MIDI</span></div></div></article>
+          <p>Writes basslines, acid lines, leads, plucks, arps, chords, pads and drums in 10 genres from full-on psy to hard techno, in your key and groove. GOD MODE rolls a new variation, then drag the loop straight onto a track in your DAW. New in 1.1: ROLL BASS writes rolling basslines with glide, pitch dips, octave jumps and groove, and MUTATE keeps the line while changing a few notes. Drop in audio and it turns melody, bass, drums or chords into MIDI.</p>
+          <div class="chips"><span class="chip hot">126 presets</span><span class="chip">ROLL BASS</span><span class="chip">10 genres x 9 roles</span><span class="chip">Drag MIDI to the DAW</span><span class="chip">Audio to MIDI</span></div></div></article>
 
       <article class="card"><div class="pic"><span class="badge inst">New · Instrument</span><img src="img/kube.png?v=1" alt="KUBE" class="zoom" loading="lazy"></div>
         <div class="body"><h3>KU<em>BE</em></h3><div class="sub">Psytrance wavetable synth</div>
@@ -361,7 +390,7 @@
 
 <section class="final">
   <div class="wrap">
-    <div class="head"><h2>GET THE <span style="color:var(--red)">SKAZI</span> SOUND</h2><p>18 plugins. 8,717 presets. <b style="color:#fff">100% free download</b>, no account, no catch.</p></div>
+    <div class="head"><h2>GET THE <span style="color:var(--red)">SKAZI</span> SOUND</h2><p>18 plugins. 8,737 presets. <b style="color:#fff">100% free download</b>, no account, no catch.</p></div>
     <div class="ctas">
       <a class="btn btn-red" href="https://github.com/slazoasher/skazi-bundle/releases/latest/download/SKAZI.Bundle.Setup.exe">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.1 10.4 4v7.1H3zm0 13.8 7.4 1.1v-7H3zm8.3 1.2L21 21.5V13h-9.7zm0-16.2v7.2H21V2.5z"/></svg>
