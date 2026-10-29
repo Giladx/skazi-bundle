@@ -48,6 +48,7 @@ namespace
         if (name == "QUAZI")          return "4-band fuzz + stereo width + post EQ";
         if (name == "SKACID")         return "Acid bassline synth + evolving sequencer";
         if (name == "SKILTER")        return "Morphing filter + LFO, envelope, step seq";
+        if (name == "SKWIDE")         return "Phase-safe stereo imager + Haas super wide";
         return "Plugin";
     }
 

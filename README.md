@@ -22,6 +22,7 @@ Every plugin uses the vendor name **SKAZI**, so DAWs list them together.
 | `Quazi` | QUAZI | 4-band distortion: Linkwitz-Riley crossover with draggable splits, SOFT/HARD/FUZZ/TUBE drive and level per band at 4x oversampling, phase-matched dry/wet mix, stereo width with MONO BASS, 3-band post EQ (low shelf, bell, high shelf), 104 presets |
 | `Skacid` | SKACID | Acid bassline synth (Special Shigaon Edition): 303-style voice with 24/18/12 dB and band filters, accent and slide, 16-step sequencer with chance, MUTATE, ratchet, swing and drift, SEQ/ARP/MIDI play modes, CRUNCH/FUZZ/FOLD/RECTIFY/CRUSH distortion, OTT, ping-pong delay and reverb, 129 presets |
 | `Skilter` | SKILTER | Morphing multimode filter: LP to BP to HP to notch morph, 12-48 dB slopes, analog-style resonance that self-oscillates, LFO, envelope follower and 16-step BPM-synced sequencer, tube/tape/hard drive pre or post, macro knob, 1x/2x/4x oversampling, Stereo/Mid-Side/Dual L-R, live spectrum and scope, RANDOM, 150 presets |
+| `Skwide` | SKWIDE | Phase-safe stereo imager: width 0-200% that never cancels in mono (everything goes into the side), 10-stage allpass MONO SPREAD for mono sources, PHASE wheel with drift, psychoacoustic DEPTH (near/far), LR4 LOW BYPASS and MONO BASS, Haas SUPER WIDE with 0-30 ms per side and a MONO SAFE mode, wet/dry MIX, frequency imager, Lissajous/polar scope with correlation and mono-sum readout, RANDOM, 70 presets |
 
 `Common` holds the shared metal skin, knobs, preset bar and A/B code used by SUBICH, BAMBA, TAHINI, ZHUG, SALAT, MIDI GOD and QUAZI.
 
